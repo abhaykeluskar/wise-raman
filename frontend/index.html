@@ -8,11 +8,19 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <title>WiseRaman - Local AI Personal Finance Analyzer</title>
+    <script>
+      try {
+        var t = localStorage.getItem('theme') || 'dark';
+        document.documentElement.classList.add(t === 'dark' ? 'dark' : 'light');
+        document.documentElement.style.colorScheme = t;
+        document.documentElement.style.backgroundColor = t === 'dark' ? '#181828' : '#E0E5EC';
+      } catch (e) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
-  <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-indigo-500/20 selection:text-indigo-400">
+  <body class="font-sans antialiased selection:bg-indigo-500/20 selection:text-indigo-400">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

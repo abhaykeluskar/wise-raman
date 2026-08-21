@@ -402,7 +402,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
                 {activeCard.card_name}
               </h2>
               <span className="text-slate-400 text-xs font-medium hidden sm:inline">
-                • Statement Day: <strong className="text-slate-300">{stmtDay}</strong> • {isStatementVerified ? 'Due Date:' : 'Estimated Due:'} <strong className="text-slate-300">{dueDateText}</strong>
+                • Statement Day: <strong className={style('text-slate-200', 'text-slate-700')}>{stmtDay}</strong> • {isStatementVerified ? 'Due Date:' : 'Estimated Due:'} <strong className={style('text-slate-200', 'text-slate-700')}>{dueDateText}</strong>
               </span>
             </div>
 
@@ -434,14 +434,14 @@ export const CardPortfolioView = ({ initialCardId }) => {
                 </h3>
               </div>
               <span className="text-xs font-semibold text-slate-400">
-                Cycle Statement Date: <strong className="text-slate-200">{stmtDay}th of each month</strong>
+                Cycle Statement Date: <strong className={style('text-slate-200', 'text-slate-700')}>{stmtDay}th of each month</strong>
               </span>
             </div>
 
             {/* Custom Progress Bar with 30% Marker */}
             <div className="flex flex-col gap-2 mt-2">
               <div className="flex items-center justify-between text-xs font-bold">
-                <span className="text-slate-300">
+                <span className={style('text-slate-300', 'text-slate-600')}>
                   Total Payment: <span className="text-red-400 font-extrabold">{formatCurrency(totalPayment)}</span>
                 </span>
                 <span className={utilizationPercent > 30 ? 'text-amber-400 font-extrabold' : 'text-emerald-400'}>
@@ -562,7 +562,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
                       <div key={tx.id} className={`p-4 rounded-xl flex flex-col gap-2 ${style('bg-slate-800/30', 'bg-slate-50')}`}>
                         <div className="flex justify-between items-start">
                           <div className="flex flex-col gap-1">
-                            <span className="font-bold text-sm text-slate-200 truncate max-w-[200px]" title={tx.description}>{tx.description}</span>
+                            <span className={`font-bold text-sm truncate max-w-[200px] ${style('text-slate-100', 'text-slate-800')}`} title={tx.description}>{tx.description}</span>
                             <span className="text-xs text-slate-400">{formatDate(tx.date, 'short')}</span>
                           </div>
                           <span className="font-extrabold text-sm text-red-400">

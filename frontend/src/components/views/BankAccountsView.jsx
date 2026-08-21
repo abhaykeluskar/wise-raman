@@ -94,11 +94,11 @@ export const BankAccountsView = () => {
             <div className="flex justify-between items-center bg-black/10 rounded-lg p-3">
               <div className="flex flex-col">
                 <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Loan Plan</span>
-                <span className="text-xs font-medium text-slate-300">{acc.name}</span>
+                <span className={`text-xs font-medium ${style('text-slate-200', 'text-slate-700')}`}>{acc.name}</span>
               </div>
               <div className="flex flex-col text-right">
                 <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Current EMI</span>
-                <span className="text-sm font-bold text-white">{formatCurrency(acc.monthly_cap || 0)}</span>
+                <span className={`text-sm font-bold ${style('text-[#EAEAEA]', 'text-slate-800')}`}>{formatCurrency(acc.monthly_cap || 0)}</span>
               </div>
             </div>
           </div>

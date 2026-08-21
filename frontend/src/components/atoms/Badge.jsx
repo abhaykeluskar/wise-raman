@@ -20,8 +20,12 @@ export const Badge = ({ children, variant = 'default', className = '' }) => {
         return 'bg-amber-500/10 text-amber-400 border border-amber-500/30';
       case 'accent':
         return style('bg-[#FF7E67]/15 text-[#FF7E67] border border-[#FF7E67]/30', 'bg-[#4A90E2]/15 text-[#4A90E2] border border-[#4A90E2]/30');
+      case 'primary':
+        return style('bg-indigo-500/15 text-indigo-300 border border-indigo-500/30', 'bg-indigo-100 text-indigo-700 border border-indigo-200');
+      case 'neutral':
+        return style('bg-slate-800/50 text-slate-300 border border-slate-700/50', 'bg-slate-200 text-slate-700 border border-slate-300');
       default:
-        return style('bg-slate-800/40 text-slate-400 border border-slate-700/40', 'bg-slate-200 text-slate-700');
+        return style('bg-slate-800/40 text-slate-300 border border-slate-700/40', 'bg-slate-200 text-slate-700');
     }
   };
 

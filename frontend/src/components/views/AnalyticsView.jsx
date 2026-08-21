@@ -249,16 +249,27 @@ export const AnalyticsView = () => {
           ))}
         </div>
 
-        <select
-          value={timeframe}
-          onChange={e => setTimeframe(e.target.value)}
-          className={`rounded-xl px-4 py-2 text-sm font-bold focus:outline-none border-0 cursor-pointer ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-        >
-          <option value="1m">Last 1 Month</option>
-          <option value="3m">Last 3 Months</option>
-          <option value="1y">Last 1 Year</option>
-          <option value="all">All Time</option>
-        </select>
+        <div className={`flex flex-wrap p-1 rounded-xl gap-1 ${style('neu-inset-dark', 'neu-inset-light')} self-start sm:self-auto`}>
+          {[
+            { key: '1m', label: '1M' },
+            { key: '3m', label: '3M' },
+            { key: '1y', label: '1Y' },
+            { key: 'all', label: 'All' },
+          ].map((tf) => (
+            <button
+              key={tf.key}
+              type="button"
+              onClick={() => setTimeframe(tf.key)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border-0 cursor-pointer ${
+                timeframe === tf.key
+                  ? (theme === 'dark' ? 'bg-[#FF7E67] text-white shadow-lg' : 'bg-white text-slate-800 shadow')
+                  : (theme === 'dark' ? 'text-slate-400 hover:text-slate-200 hover:bg-[#24243E]' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-300')
+              }`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Row 1: MoM Burn Rate (Full Width) */}

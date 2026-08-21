@@ -51,6 +51,19 @@
   background-color: rgba(141, 153, 174, 0.7);
 }
 
+html.dark,
+html.dark body {
+  background-color: #181828;
+  color: #EAEAEA;
+}
+
+html.light,
+html:not(.dark),
+html:not(.dark) body {
+  background-color: #E0E5EC;
+  color: #2D3436;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -64,6 +77,72 @@ body {
   overflow-y: auto;
   min-height: 100vh;
   min-height: 100dvh;
+}
+
+html.dark input,
+html.dark textarea,
+html.dark select {
+  color: #EAEAEA;
+  color-scheme: dark;
+}
+
+html.light input,
+html.light textarea,
+html.light select,
+html:not(.dark) input,
+html:not(.dark) textarea,
+html:not(.dark) select {
+  color: #2D3436;
+  color-scheme: light;
+}
+
+html.dark option {
+  background-color: #1A1A2E;
+  color: #EAEAEA;
+}
+
+html.light option,
+html:not(.dark) option {
+  background-color: #FFFFFF;
+  color: #2D3436;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #8d99ae;
+  opacity: 1;
+}
+
+html.dark input:-webkit-autofill,
+html.dark textarea:-webkit-autofill,
+html.dark select:-webkit-autofill {
+  -webkit-text-fill-color: #EAEAEA;
+  caret-color: #EAEAEA;
+  box-shadow: 0 0 0 1000px #0F0F1A inset;
+  transition: background-color 9999s ease-out;
+}
+
+html.dark .recharts-legend-item-text,
+html.dark .recharts-tooltip-item,
+html.dark .recharts-tooltip-label {
+  color: #EAEAEA !important;
+  fill: #EAEAEA !important;
+}
+
+html.light .recharts-legend-item-text,
+html:not(.dark) .recharts-legend-item-text {
+  color: #2D3436 !important;
+  fill: #2D3436 !important;
+}
+
+html.dark .recharts-default-tooltip {
+  background: #0F0F1A !important;
+  border-color: #24243E !important;
+  color: #EAEAEA !important;
+}
+
+html.dark .recharts-text {
+  fill: #8d99ae;
 }
 
 .pb-safe {

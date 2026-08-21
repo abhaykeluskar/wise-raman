@@ -610,7 +610,7 @@ export const TransactionLedgerView = () => {
                 <div key={tx.id} className={`p-4 rounded-xl flex flex-col gap-2 ${style('bg-slate-800/30', 'bg-slate-50')}`}>
                   <div className="flex justify-between items-start">
                     <div className="flex flex-col">
-                      <span className="font-bold text-sm text-slate-200 truncate max-w-[200px]" title={tx.description}>{tx.description}</span>
+                      <span className={`font-bold text-sm truncate max-w-[200px] ${style('text-slate-100', 'text-slate-800')}`} title={tx.description}>{tx.description}</span>
                       <span className="text-xs text-slate-400">{formatDate(tx.date, 'short')} &bull; {acc?.name || 'Bank Account'}</span>
                     </div>
                     <span className={`font-extrabold text-sm ${isIncome ? 'text-emerald-400' : 'text-red-400'}`}>
