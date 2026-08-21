@@ -1,9 +1,17 @@
-import requests
 import json
 import logging
-from sqlalchemy import text
+import time
+from urllib.parse import urlparse
+
+import requests
+from requests.adapters import HTTPAdapter
+from sqlalchemy.orm import joinedload
+from urllib3.util.retry import Retry
+
 from app.config import settings
-from app.models import Transaction
+from app.merchant_map import match_known_merchant
+from app.models import Account, Transaction
+from app.telemetry import ai_telemetry as telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -20,72 +28,147 @@ CATEGORIES = [
     "Fuel",
     "Education",
     "Transfer",
-    "Others"
+    "Others",
 ]
+
+KEEP_ALIVE = "30m"
+RAG_CONTEXT_LIMIT = 24
+CATEGORIZE_NUM_PREDICT = 192
+RAG_NUM_PREDICT = 640
+
+_session = requests.Session()
+_adapter = HTTPAdapter(
+    pool_connections=4,
+    pool_maxsize=8,
+    max_retries=Retry(total=2, backoff_factor=0.25, status_forcelist=[502, 503, 504]),
+)
+_session.mount("http://", _adapter)
+_session.mount("https://", _adapter)
+
+ALLOWED_OLLAMA_HOSTS = {
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "ollama",
+    "finance_ollama",
+    "host.docker.internal",
+}
+
+
+def is_safe_ollama_url(url: str) -> bool:
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").lower()
+    if host not in ALLOWED_OLLAMA_HOSTS:
+        return False
+    if parsed.port not in (None, 80, 443, 11434):
+        return False
+    return True
+
+
+def llm_options(num_predict: int, num_ctx: int | None = None) -> dict:
+    return {
+        "temperature": settings.LLM_TEMPERATURE,
+        "num_ctx": num_ctx if num_ctx is not None else settings.LLM_NUM_CTX,
+        "num_predict": num_predict,
+    }
+
+
+def ollama_generate(prompt: str, *, system: str | None = None, fmt=None, num_predict: int = RAG_NUM_PREDICT, timeout: int = 90):
+    payload = {
+        "model": settings.LLM_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "keep_alive": KEEP_ALIVE,
+        "options": {
+            **llm_options(num_predict),
+            "num_gpu": -1,
+        },
+    }
+    if system:
+        payload["system"] = system
+    if fmt is not None:
+        payload["format"] = fmt
+    return _session.post(f"{settings.OLLAMA_URL}/api/generate", json=payload, timeout=timeout)
+
 
 def ensure_models_exist():
     """Check if the required LLM and Embedding models exist in Ollama; if not, pull them."""
     try:
-        # Check installed models
-        response = requests.get(f"{settings.OLLAMA_URL}/api/tags")
+        response = _session.get(f"{settings.OLLAMA_URL}/api/tags", timeout=8)
         if response.status_code != 200:
             logger.error("Failed to check Ollama models.")
             return False
-            
+
         installed_models = [m["name"] for m in response.json().get("models", [])]
-        
-        # 1. Pull Embedding model first (since it is small ~274MB and critical for RAG/Ingestion database operations)
+
         embed_model = settings.EMBEDDING_MODEL
         if embed_model not in installed_models and f"{embed_model}:latest" not in installed_models:
             logger.info(f"Pulling Embedding model: {embed_model}...")
-            requests.post(f"{settings.OLLAMA_URL}/api/pull", json={"name": embed_model, "stream": False})
+            _session.post(
+                f"{settings.OLLAMA_URL}/api/pull",
+                json={"name": embed_model, "stream": False},
+                timeout=600,
+            )
             logger.info(f"Embedding model {embed_model} pulled successfully.")
-            
-        # 2. Pull LLM model (larger model ~4.7GB, takes a few minutes)
+
         llm_model = settings.LLM_MODEL
         if llm_model not in installed_models and f"{llm_model}:latest" not in installed_models:
             logger.info(f"Pulling LLM model: {llm_model}. This might take a few minutes...")
-            requests.post(f"{settings.OLLAMA_URL}/api/pull", json={"name": llm_model, "stream": False})
+            _session.post(
+                f"{settings.OLLAMA_URL}/api/pull",
+                json={"name": llm_model, "stream": False},
+                timeout=1800,
+            )
             logger.info(f"LLM model {llm_model} pulled successfully.")
-            
+
         return True
     except Exception as e:
         logger.error(f"Error connecting to Ollama: {str(e)}")
         return False
 
-import time
-from app.telemetry import ai_telemetry as telemetry
 
 def get_embedding(text_to_embed):
-    """Generate vector embedding for the text using Ollama's embedding endpoint."""
+    """Generate vector embedding using Ollama (/api/embed, with legacy fallback)."""
     t0 = time.time()
+    base = settings.OLLAMA_URL.rstrip("/")
     try:
-        response = requests.post(
-            f"{settings.OLLAMA_URL}/api/embeddings",
+        response = _session.post(
+            f"{base}/api/embed",
             json={
                 "model": settings.EMBEDDING_MODEL,
-                "prompt": text_to_embed
+                "input": text_to_embed,
+                "keep_alive": KEEP_ALIVE,
             },
-            timeout=30
+            timeout=20,
         )
-        if response.status_code == 200:
-            duration_ms = (time.time() - t0) * 1000
-            emb = response.json().get("embedding")
-            return emb
-        else:
-            logger.error(f"Ollama embedding request failed: {response.text}")
+        if response.status_code == 404:
+            response = _session.post(
+                f"{base}/api/embeddings",
+                json={"model": settings.EMBEDDING_MODEL, "prompt": text_to_embed},
+                timeout=20,
+            )
+        if response.status_code != 200:
+            logger.error(f"Ollama embedding request failed: {response.text[:300]}")
             return None
+        data = response.json()
+        emb = None
+        if data.get("embeddings"):
+            emb = data["embeddings"][0]
+        elif data.get("embedding"):
+            emb = data["embedding"]
+        _ = (time.time() - t0) * 1000
+        return emb
     except Exception as e:
         logger.error(f"Error generating embedding: {str(e)}")
         return None
 
-from app.merchant_map import match_known_merchant
 
 def categorize_transaction(description, amount, categories=None):
-    """Categorize a transaction based on its description and amount using fast deterministic rules or Ollama."""
+    """Categorize a transaction using merchant rules first, then a short LLM call."""
     allowed_categories = categories if categories else CATEGORIES
 
-    # 1. Fast path: Deterministic merchant map lookup
     known_match = match_known_merchant(description)
     if known_match:
         clean_name, cat, subcat = known_match
@@ -93,141 +176,96 @@ def categorize_transaction(description, amount, categories=None):
             telemetry.log(f"Fast-Matched '{description[:25]}' -> {cat} ({subcat}) via Indian merchant engine")
             return cat, subcat, clean_name
 
-    # 2. AI classification fallback with few-shot Indian context examples
-    prompt = f"""
-    You are a precise personal finance classifier specialized in Indian banking formats. Categorize the transaction description into exactly ONE of the following categories:
-    {", ".join(allowed_categories)}
-    
-    Provide a specific subcategory (1-2 words).
-    
-    Context Rules:
-    - UPI payments often contain VPA/UPI IDs (e.g. @okicici, @paytm, @ybl) and merchant names.
-    - NEFT/IMPS/RTGS/NACH denote bank transfers, salaries, or bill auto-debits.
-    - If the description indicates Swiggy, Zomato, Blinkit, Zepto, categorize appropriately as Dining or Groceries.
-    - If the description indicates CRED, Paytm, or BillDesk, it may be a credit card bill or utility.
-    - Strip out UTRs, IMPS reference numbers, UPI handles, and VPA strings from the raw description.
-    - Standardize raw merchant descriptions (e.g., convert 'ZOMATO LTD-ZOMATO' to simply 'Zomato').
-    
-    Few-Shot Examples:
-    - Raw: "UPI/321456789012/SWIGGY/swiggy@icici" -> {{"category": "Dining", "subcategory": "Food Delivery", "clean_description": "Swiggy"}}
-    - Raw: "POS 412345678901 IRCTC NEXTGEN NEW DELHI" -> {{"category": "Travel", "subcategory": "Train Tickets", "clean_description": "IRCTC"}}
-    - Raw: "ACH D- HDFC LIFE INSURANCE" -> {{"category": "Investment", "subcategory": "Life Insurance", "clean_description": "HDFC Life"}}
-    - Raw: "NETFLIX ENTERTAINMENT SVCS" -> {{"category": "Entertainment", "subcategory": "OTT Subscription", "clean_description": "Netflix"}}
-    - Raw: "SALARY CREDIT FOR JULY 2026" -> {{"category": "Salary/Income", "subcategory": "Employment Income", "clean_description": "Salary Credit"}}
-    
-    Transaction Details:
-    - Description: "{description}"
-    - Amount: {amount} (negative indicates spending/debit, positive indicates refund/income/payment)
-    
-    You MUST respond ONLY with a JSON object in this exact schema:
-    {{
-      "category": "Selected Category",
-      "subcategory": "Subcategory Name",
-      "clean_description": "Standardized Merchant Name"
-    }}
-    """
-    
+    cats = ", ".join(allowed_categories)
+    prompt = (
+        "Classify this Indian bank transaction. Reply JSON only.\n"
+        f"Categories: {cats}\n"
+        'Schema: {"category":"...","subcategory":"...","clean_description":"..."}\n'
+        f'Description: "{description}"\n'
+        f"Amount: {amount} (negative=spend)\n"
+    )
+
     try:
-        t0 = time.time()
-        response = requests.post(
-            f"{settings.OLLAMA_URL}/api/generate",
-            json={
-                "model": settings.LLM_MODEL,
-                "prompt": prompt,
-                "format": "json",
-                "stream": False
-            },
-            timeout=45
+        response = ollama_generate(
+            prompt,
+            fmt="json",
+            num_predict=CATEGORIZE_NUM_PREDICT,
+            timeout=25,
         )
-        
+
         if response.status_code == 200:
-            result = json.loads(response.json().get("response", "{}"))
+            result = json.loads(response.json().get("response", "{}") or "{}")
             category = result.get("category")
             subcategory = result.get("subcategory")
             clean_description = result.get("clean_description", description)
-            
+
             if category not in allowed_categories:
                 category = "Others"
-                
+
             telemetry.log(f"Categorized '{description[:25]}' -> {category} ({subcategory})")
             return category, subcategory, clean_description
-        else:
-            logger.error(f"Ollama categorization request failed: {response.text}")
-            return "Others", "Uncategorized", description
+        logger.error(f"Ollama categorization request failed: {response.text[:300]}")
+        return "Others", "Uncategorized", description
     except Exception as e:
         logger.error(f"Error categorizing transaction: {str(e)}")
         return "Others", "Uncategorized", description
 
+
 def query_financial_rag(db, user_query):
-    """Search for relevant transactions using vector similarity and query the LLM for a RAG response."""
+    """Search relevant embedded transactions and answer with a compact local LLM call."""
     telemetry.log(f"RAG Query: '{user_query[:50]}...'")
-    
-    # 1. Generate query embedding
+
     t0 = time.time()
     query_vector = get_embedding(user_query)
     embed_ms = (time.time() - t0) * 1000
     if not query_vector:
         telemetry.log("Vector embedding generation failed - generator offline", level="ERROR")
         return "Sorry, I could not process your query because the embedding generator is currently offline."
-        
+
     telemetry.log(f"Generated 768-dim query embedding ({embed_ms:.1f}ms)")
 
-    # 2. Query database for context using pgvector cosine distance
     t_search = time.time()
-    results = db.query(Transaction).order_by(
-        Transaction.embedding.cosine_distance(query_vector)
-    ).limit(30).all()
+    results = (
+        db.query(Transaction)
+        .options(joinedload(Transaction.account).joinedload(Account.bank))
+        .filter(Transaction.embedding.isnot(None))
+        .order_by(Transaction.embedding.cosine_distance(query_vector))
+        .limit(RAG_CONTEXT_LIMIT)
+        .all()
+    )
     search_ms = (time.time() - t_search) * 1000
-    
+
     if not results:
         telemetry.log("pgvector search returned 0 matching records")
         return "I couldn't find any transactions in your history. Please upload a statement first."
-        
+
     telemetry.log(f"Matched {len(results)} context transactions via pgvector ({search_ms:.1f}ms)")
 
-    # 3. Format context
     context_lines = []
     for tx in results:
-        amount_type = "Spent" if tx.amount < 0 else "Received/Refunded"
-        abs_amount = abs(tx.amount)
+        direction = "out" if tx.amount < 0 else "in"
         bank_name = tx.account.bank.name if tx.account and tx.account.bank else "Bank"
         context_lines.append(
-            f"- Date: {tx.date}, Description: '{tx.description}', Amount: {abs_amount} ({amount_type}), Category: {tx.category}, Subcategory: {tx.subcategory}, Bank: {bank_name}"
+            f"{tx.date} | {tx.description} | {abs(tx.amount)} {direction} | {tx.category}/{tx.subcategory} | {bank_name}"
         )
     context_text = "\n".join(context_lines)
-    
-    # 4. Construct prompt for Ollama
-    system_prompt = """You are an expert personal finance assistant. 
-Analyze the provided transaction history and answer the user's question accurately.
-Provide insights and details like total sums, date ranges, and categories if relevant.
-If the provided context does not contain the answer, state that clearly.
-Keep your answer clear, informative, and formatted using Markdown.
-"""
 
-    prompt = f"""
-Context (Relevant Transactions):
-{context_text}
+    system_prompt = (
+        "You are a concise personal finance assistant. "
+        "Answer only from the given transactions. Include totals when relevant. "
+        "If the context is insufficient, say so. Use short Markdown."
+    )
+    prompt = f"Transactions:\n{context_text}\n\nQuestion: {user_query}\nAnswer:"
 
-Question:
-{user_query}
-
-Answer:
-"""
-
-    prompt_words = len(prompt.split())
-    telemetry.log(f"Invoking {settings.LLM_MODEL} with {prompt_words} prompt tokens...")
+    telemetry.log(f"Invoking {settings.LLM_MODEL} with {len(prompt.split())} prompt tokens...")
 
     try:
         t_llm = time.time()
-        response = requests.post(
-            f"{settings.OLLAMA_URL}/api/generate",
-            json={
-                "model": settings.LLM_MODEL,
-                "system": system_prompt,
-                "prompt": prompt,
-                "stream": False
-            },
-            timeout=120
+        response = ollama_generate(
+            prompt,
+            system=system_prompt,
+            num_predict=RAG_NUM_PREDICT,
+            timeout=90,
         )
         llm_duration = time.time() - t_llm
         if response.status_code == 200:
@@ -237,10 +275,9 @@ Answer:
             t_rate = (eval_count / llm_duration) if llm_duration > 0 else 0
             telemetry.log(f"Inference complete: {eval_count} tokens in {llm_duration:.2f}s ({t_rate:.1f} t/s)")
             return response_text
-        else:
-            telemetry.log(f"LLM generation failed: HTTP {response.status_code}", level="ERROR")
-            return f"Error from AI engine: {response.text}"
+        telemetry.log(f"LLM generation failed: HTTP {response.status_code}", level="ERROR")
+        return "The local AI engine returned an error. Check that Ollama is running and the model is pulled."
     except Exception as e:
-        telemetry.log(f"Connection error to Ollama: {str(e)}", level="ERROR")
+        telemetry.log("Connection error to Ollama", level="ERROR")
         logger.error(f"Error querying RAG: {str(e)}")
-        return f"Could not connect to local AI service. Error: {str(e)}"
+        return "Could not connect to the local AI service. Confirm Ollama is running."

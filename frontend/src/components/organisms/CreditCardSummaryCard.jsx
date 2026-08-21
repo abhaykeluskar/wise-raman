@@ -4,6 +4,7 @@ import { useFinance } from '../../context/FinanceContext';
 import { Badge } from '../atoms/Badge';
 import { NetworkLogo } from '../atoms/NetworkLogo';
 import { formatCurrency } from '../../utils/formatters';
+import { getNextDueDate } from '../../utils/analytics';
 import { CreditCard, Calendar } from 'lucide-react';
 
 export const CreditCardSummaryCard = ({ onSelectCard }) => {
@@ -13,8 +14,6 @@ export const CreditCardSummaryCard = ({ onSelectCard }) => {
   // Compute total payment per card in current cycle
   const cardStats = React.useMemo(() => {
     const today = new Date();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
 
     return cards.map(card => {
       const allCardTxs = transactions.filter(t => String(t.account_id) === String(card.account_id));
@@ -37,22 +36,13 @@ export const CreditCardSummaryCard = ({ onSelectCard }) => {
         .reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
       const totalPayment = Math.max(0, totalDebits - refundsAndCashbacks);
-      
-      const stmtDay = parseInt(card.statement_date) || 1;
-      let dueDay = stmtDay + 20;
-      let dueMonth = currentMonth;
-      if (dueDay > 30) {
-        dueDay -= 30;
-        dueMonth = (dueMonth + 1) % 12;
-      }
-      const dueDate = new Date(currentYear, dueMonth, dueDay);
-      const diffDays = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+      const due = getNextDueDate(card, today);
 
       return {
         ...card,
         totalPayment,
-        dueDayText: `${dueDay} ${dueDate.toLocaleString('en-US', { month: 'short' })}`,
-        diffDays: diffDays >= 0 ? diffDays : 30 + diffDays
+        dueDayText: due.formattedDate,
+        diffDays: due.daysRemaining
       };
     });
   }, [cards, accounts, transactions]);

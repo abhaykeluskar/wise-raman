@@ -59,7 +59,7 @@ export const ToastProvider = ({ children }) => {
       {children}
 
       {/* Floating Toast Notification Container */}
-      <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0">
+      <div className="fixed bottom-24 right-4 md:bottom-5 md:right-5 z-[9999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0">
         {toasts.map(t => {
           let icon = <Info className="h-5 w-5 text-blue-400 shrink-0" />;
           let borderAccent = 'border-blue-500/40';
@@ -87,7 +87,7 @@ export const ToastProvider = ({ children }) => {
               {icon}
               <div className="flex-1 flex flex-col min-w-0 pr-1">
                 {t.title && <span className={`text-xs font-bold ${titleColor}`}>{t.title}</span>}
-                <span className="text-xs text-slate-300 font-normal leading-relaxed mt-0.5 break-words">
+                <span className={`text-xs font-normal leading-relaxed mt-0.5 break-words ${style('text-slate-300', 'text-slate-600')}`}>
                   {t.message}
                 </span>
               </div>

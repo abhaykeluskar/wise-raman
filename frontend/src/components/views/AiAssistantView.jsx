@@ -180,7 +180,7 @@ export const AiAssistantView = () => {
     <div className="flex flex-col gap-5 animate-in fade-in duration-300 max-w-6xl mx-auto pb-12">
       
       {/* 1. TOP: Live AI Engine Telemetry Console */}
-      <TelemetryTerminal title="AI Engine Live Telemetry" endpoint="/api/ai/logs" isCollapsible={true} defaultExpanded={true} />
+      <TelemetryTerminal title="AI Engine Live Telemetry" endpoint="/api/ai/logs" isCollapsible={true} defaultExpanded={false} />
 
       {/* 2. LLM Engine Configuration Panel (Expandable) */}
       <div className={`p-5 rounded-2xl border-0 flex flex-col gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
@@ -193,7 +193,7 @@ export const AiAssistantView = () => {
               <Cpu className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+              <h3 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${style('text-slate-200', 'text-slate-700')}`}>
                 LLM & AI Engine Configuration
                 <Badge variant={ollamaConnected ? "success" : "danger"}>
                   {ollamaConnected ? "Online" : "Offline"}
@@ -381,7 +381,7 @@ export const AiAssistantView = () => {
       </div>
 
       {/* 3. Conversational Financial RAG Chat Interface */}
-      <div className={`flex flex-col justify-between p-6 rounded-2xl border-0 shadow-xl transition-all min-h-[500px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
+      <div className={`flex flex-col justify-between p-4 sm:p-6 rounded-2xl border-0 shadow-xl transition-all min-h-[420px] sm:min-h-[500px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
         
         {/* Chat Header */}
         <div className="flex items-center justify-between border-b pb-3 border-slate-800/10">
@@ -404,8 +404,9 @@ export const AiAssistantView = () => {
 
           <button
             onClick={handleResetChat}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-200 border-0 bg-transparent cursor-pointer transition-colors"
+            className={`p-2 rounded-xl border-0 bg-transparent cursor-pointer transition-colors ${style('text-slate-400 hover:text-slate-200', 'text-slate-500 hover:text-slate-800')}`}
             title="Reset Conversation"
+            aria-label="Reset conversation"
           >
             <RotateCcw className="h-4 w-4" />
           </button>
@@ -477,15 +478,16 @@ export const AiAssistantView = () => {
               e.preventDefault();
               handleSendMessage();
             }}
-            className="flex items-center gap-3"
+            className="flex items-center gap-2"
           >
             <input
               type="text"
-              placeholder="Ask anything about your spends, card limits, or cashflow..."
+              placeholder="Ask about spends, limits, or cashflow…"
               value={inputQuery}
               onChange={e => setInputQuery(e.target.value)}
               disabled={loading}
-              className={`flex-1 rounded-xl px-4 py-3 text-xs focus:outline-none border-0 transition-all ${style(
+              enterKeyHint="send"
+              className={`flex-1 min-h-11 rounded-xl px-4 py-3 text-sm focus:outline-none border-0 transition-all ${style(
                 'neu-inset-dark text-[#EAEAEA]',
                 'neu-inset-light text-[#2D3436]'
               )}`}
@@ -495,8 +497,9 @@ export const AiAssistantView = () => {
               variant="primary"
               disabled={!inputQuery.trim() || loading}
               icon={Send}
+              className="min-h-11"
             >
-              Ask AI
+              <span className="hidden sm:inline">Ask AI</span>
             </Button>
           </form>
 

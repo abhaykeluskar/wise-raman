@@ -15,7 +15,7 @@ export const UploadSnackbar = () => {
   const isLoading = !isSuccess && !isError;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 max-w-md w-[90vw] sm:w-[420px] animate-in fade-in slide-in-from-bottom-5 duration-300">
+    <div className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-50 max-w-md w-[min(90vw,420px)] animate-in fade-in slide-in-from-bottom-5 duration-300">
       <div className={`p-4 rounded-2xl border-0 shadow-2xl flex flex-col gap-3 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
         
         {/* Header */}

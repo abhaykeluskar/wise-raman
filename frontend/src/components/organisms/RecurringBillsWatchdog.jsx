@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { ShieldAlert, ArrowRight } from 'lucide-react';
 
-export const RecurringBillsWatchdog = ({ transactions }) => {
+export const RecurringBillsWatchdog = ({ transactions, onSelectMerchant }) => {
   const { theme, style } = useTheme();
 
   const recurringBills = useMemo(() => {
@@ -76,7 +76,12 @@ export const RecurringBillsWatchdog = ({ transactions }) => {
         {recurringBills.map((bill, idx) => {
           const isDueSoon = bill.daysUntil <= 5 && bill.daysUntil >= 0;
           return (
-            <div key={idx} className={`p-3 rounded-xl flex items-center justify-between ${style('bg-[#1a1a2e]', 'bg-slate-100')}`}>
+            <div
+              key={idx}
+              role={onSelectMerchant ? 'button' : undefined}
+              onClick={() => onSelectMerchant && onSelectMerchant(bill.merchant)}
+              className={`p-3 rounded-xl flex items-center justify-between ${style('bg-[#1a1a2e]', 'bg-slate-100')} ${onSelectMerchant ? 'cursor-pointer hover:brightness-110' : ''}`}
+            >
               <div className="flex flex-col">
                 <span className={`text-sm font-bold truncate max-w-[150px] ${style('text-slate-200', 'text-slate-800')}`}>
                   {bill.merchant}

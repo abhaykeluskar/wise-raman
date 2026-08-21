@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
-import { FinanceProvider } from './context/FinanceContext';
+import { FinanceProvider, useFinance } from './context/FinanceContext';
 import { ToastProvider } from './context/ToastContext';
 import { Navbar } from './components/organisms/Navbar';
 import { DashboardView } from './components/views/DashboardView';
@@ -15,10 +15,16 @@ import { UploadSnackbar } from './components/molecules/UploadSnackbar';
 import { AnalyticsView } from './components/views/AnalyticsView';
 
 const MainLayout = () => {
-  const { theme, style } = useTheme();
+  const { theme } = useTheme();
+  const { loading, accounts, ledgerFocus } = useFinance();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const isBootstrapping = loading && accounts.length === 0;
+
+  useEffect(() => {
+    if (ledgerFocus?.ts) setActiveTab('transactions');
+  }, [ledgerFocus?.ts]);
 
   const handleSelectCardFromDashboard = (cardId) => {
     setSelectedCardId(cardId);
@@ -39,7 +45,12 @@ const MainLayout = () => {
       />
 
       {/* Main Content Viewport */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6">
+        {isBootstrapping && (
+          <div className="mb-4 text-xs text-slate-400 font-medium tracking-wide">
+            Loading your accounts and ledger…
+          </div>
+        )}
         {activeTab === 'dashboard' && (
           <DashboardView onSelectCard={handleSelectCardFromDashboard} />
         )}

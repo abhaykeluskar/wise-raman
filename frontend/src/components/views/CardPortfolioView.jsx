@@ -7,6 +7,7 @@ import { NetworkLogo } from '../atoms/NetworkLogo';
 import { Button } from '../atoms/Button';
 import { StatDeckCard } from '../molecules/StatDeckCard';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { getNextDueDate } from '../../utils/analytics';
 import { EditCardModal } from '../organisms/EditCardModal';
 import { 
   CreditCard as CreditCardIcon, 
@@ -149,8 +150,8 @@ export const CardPortfolioView = ({ initialCardId }) => {
     const rem30 = Math.max(0, safe30 - finalPayment);
 
     const sDay = parseInt(activeCard.statement_date) || 1;
-    let dDay = sDay + 20;
-    if (dDay > 30) dDay -= 30;
+    const estimatedDue = getNextDueDate(activeCard);
+    const dDay = estimatedDue.dueDate.getDate();
 
     return {
       activeTransactions: cardTxs,
@@ -164,7 +165,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
       remainingUnder30: rem30,
       stmtDay: sDay,
       dueDay: dDay,
-      dueDateText: dueTxt || `Day ${dDay}`,
+      dueDateText: dueTxt || estimatedDue.formattedDate,
       isStatementVerified: isVerified
     };
   }, [activeCard, accounts, transactions, statements]);

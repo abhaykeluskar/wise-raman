@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen2.5:3b")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.0"))
-    LLM_NUM_CTX: int = int(os.getenv("LLM_NUM_CTX", "2048"))
+    LLM_NUM_CTX: int = int(os.getenv("LLM_NUM_CTX", "4096"))
     ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://localhost:80,http://localhost")
 
     @property
