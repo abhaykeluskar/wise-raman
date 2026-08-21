@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { Calendar as CalendarIcon } from 'lucide-react';
+import { toLocalDateKey } from '../../utils/formatters';
 
 export const CalendarHeatmap = ({ transactions }) => {
   const { theme, style } = useTheme();
@@ -17,7 +18,7 @@ export const CalendarHeatmap = ({ transactions }) => {
     const dataMap = new Map();
     // Initialize 365 days with 0
     for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateKey(d);
       dataMap.set(dateStr, 0);
     }
 
@@ -26,7 +27,7 @@ export const CalendarHeatmap = ({ transactions }) => {
     transactions.forEach(tx => {
       const amt = parseFloat(tx.amount);
       if (amt < 0 && !tx.is_excluded_from_spending) {
-        const txDateStr = tx.date; 
+        const txDateStr = toLocalDateKey(tx.date);
         if (dataMap.has(txDateStr)) {
           const newTotal = dataMap.get(txDateStr) + Math.abs(amt);
           dataMap.set(txDateStr, newTotal);

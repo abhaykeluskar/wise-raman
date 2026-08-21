@@ -13,6 +13,21 @@ export const formatCurrency = (val, showDecimals = true, preserveSign = true) =>
   return (preserveSign && isNegative) ? `-${formatted}` : formatted;
 };
 
+/** Local calendar YYYY-MM-DD. Avoid Date#toISOString(), which is UTC and shifts the day in IST. */
+export const toLocalDateKey = (date) => {
+  if (date == null || date === '') return '';
+  if (typeof date === 'string') {
+    const match = date.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    date = new Date(date);
+  }
+  if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 export const formatDate = (dateStr, format = 'short') => {
   if (!dateStr) return '';
   const d = new Date(dateStr);
