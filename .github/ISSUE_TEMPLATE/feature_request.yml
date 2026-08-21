@@ -1,0 +1,22 @@
+name: 💡 Feature Request
+description: Suggest an idea or new bank format support for WiseRaman
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggest a new feature or bank statement parser!
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description
+      description: A clear and concise description of what you want to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation / Use Case
+      description: Why would this feature be useful in the Indian personal finance context?
+    validations:
+      required: false
