@@ -2,7 +2,7 @@ import uuid
 import threading
 import logging
 from typing import List, Optional
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import date as date_type
 
 from fastapi import FastAPI, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, Request
@@ -17,11 +17,12 @@ from app.config import settings
 from app.database import get_db, init_db, SessionLocal
 from app.models import Account, Transaction, Category, CreditCard, CreditCardStatement
 from app.parser import parse_statement
-from app.ai import ensure_models_exist, categorize_transaction, get_embedding, query_financial_rag
+from app.ai import ensure_models_exist, categorize_transaction, get_embedding, query_financial_rag, is_safe_ollama_url
 from app.telemetry import backend_telemetry, ai_telemetry
 
 def generate_transaction_fingerprint(account_id: uuid.UUID, txn_date: date_type, amount: Decimal, raw_text: str) -> str:
-    key = f"{account_id}|{txn_date}|{float(amount):.2f}|{raw_text.strip()[:60]}"
+    amt = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    key = f"{account_id}|{txn_date}|{amt}|{(raw_text or '').strip()[:60]}"
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 # Configure logging
@@ -41,7 +42,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     error_msg = str(exc) or "Internal Server Error"
     logger.error(f"Global exception on {request.url.path}: {error_msg}", exc_info=True)
     backend_telemetry.log(f"Backend Error [{request.url.path}]: {error_msg}", level="ERROR", meta={"path": request.url.path})
-    return JSONResponse(status_code=500, content={"detail": error_msg})
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 # Enable CORS for React frontend (Vite dev server)
 app.add_middleware(
@@ -246,36 +247,38 @@ def enrich_transactions_task(transaction_ids: List[uuid.UUID]):
     """Background task to run Ollama categorization and vector embedding creation."""
     db = SessionLocal()
     try:
-        # Load dynamic categories
         db_categories = db.query(Category).all()
         categories_list = [c.name for c in db_categories] if db_categories else None
+        txs = (
+            db.query(Transaction)
+            .options(joinedload(Transaction.account).joinedload(Account.bank))
+            .filter(Transaction.id.in_(transaction_ids))
+            .all()
+        )
 
-        for tx_id in transaction_ids:
-            tx = db.query(Transaction).options(joinedload(Transaction.account).joinedload(Account.bank)).filter(Transaction.id == tx_id).first()
-            if not tx:
-                continue
-            
-            # 1. Categorize transaction if not already categorized
+        for i, tx in enumerate(txs, 1):
             if not tx.category or tx.category in ["Processing...", "Parsing..."]:
-                category, subcategory, clean_description = categorize_transaction(tx.description, float(tx.amount), categories_list)
+                category, subcategory, clean_description = categorize_transaction(
+                    tx.description, float(tx.amount), categories_list
+                )
                 tx.category = category
                 tx.subcategory = subcategory
                 tx.description = clean_description
-            
-            # 2. Create embedding
-            # Rich semantic format for RAG
-            bank_name = tx.account.bank.name if tx.account and tx.account.bank else 'Unknown'
-            embed_text = f"Date: {tx.date}. Bank: {bank_name}. Description: {tx.description}. Amount: {tx.amount}. Category: {tx.category}. Subcategory: {tx.subcategory}."
+
+            bank_name = tx.account.bank.name if tx.account and tx.account.bank else "Unknown"
+            embed_text = (
+                f"Date: {tx.date}. Bank: {bank_name}. Description: {tx.description}. "
+                f"Amount: {tx.amount}. Category: {tx.category}. Subcategory: {tx.subcategory}."
+            )
             embedding = get_embedding(embed_text)
             if embedding:
                 tx.embedding = embedding
-                
-            db.commit()
-            
-        # 3. Run Bridge Algorithm after new transactions are parsed
+            if i % 8 == 0:
+                db.commit()
+
+        db.commit()
         run_bridge_algorithm(db)
-            
-        logger.info(f"Successfully processed {len(transaction_ids)} transactions in background.")
+        logger.info(f"Successfully processed {len(txs)} transactions in background.")
     except Exception as e:
         logger.error(f"Error in background enrichment: {str(e)}")
     finally:
@@ -368,6 +371,8 @@ def upload_bank_statement(
         from app.models import AccountSubtype
         account_type_str = "Credit Card" if account.subtype == AccountSubtype.CREDIT_CARD else "Savings"
         contents = file.file.read()
+        if len(contents) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Statement file is too large (max 15 MB).")
         parsed_result = parse_statement(
             contents, 
             file.filename, 
@@ -407,6 +412,8 @@ def upload_bank_statement(
                 else:
                     logger.warning(f"Mathematical proof check: Expected {closing_balance}, got {calculated_close}")
                     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error parsing statement: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Error parsing statement file: {str(e)}")
@@ -464,7 +471,13 @@ def upload_bank_statement(
             p_end = statement_summary.get("period_end_date") or stmt_dt
 
             prev_dues_val = Decimal(str(opening_balance)) if opening_balance is not None else Decimal("0.00")
-            total_due_val = Decimal(str(closing_balance)) if closing_balance is not None else sum(abs(Decimal(str(pt["amount"]))) for pt in parsed_txs if Decimal(str(pt["amount"])) < 0)
+            if closing_balance is not None:
+                total_due_val = Decimal(str(closing_balance))
+            else:
+                cycle_net = sum(Decimal(str(pt["amount"])) for pt in parsed_txs)
+                # TAD = previous dues − Σ(credits − debits) when spends are stored negative
+                reconstructed = prev_dues_val - cycle_net
+                total_due_val = reconstructed if reconstructed > 0 else Decimal("0.00")
             min_due_val = Decimal(str(statement_summary.get("minimum_amount_due") or 0))
 
             statement_record = CreditCardStatement(
@@ -884,7 +897,13 @@ def get_llm_settings():
 def update_llm_settings(req: LlmSettingsRequest):
     """Update active LLM configuration in runtime."""
     if req.ollama_url:
-        settings.OLLAMA_URL = req.ollama_url.strip().rstrip('/')
+        url = req.ollama_url.strip().rstrip('/')
+        if not is_safe_ollama_url(url):
+            raise HTTPException(
+                status_code=400,
+                detail="Ollama URL must be a local endpoint (localhost, ollama, or host.docker.internal on port 11434).",
+            )
+        settings.OLLAMA_URL = url
     if req.llm_model:
         settings.LLM_MODEL = req.llm_model.strip()
     if req.embedding_model:
@@ -908,36 +927,47 @@ def test_ollama_connection(request: TestOllamaRequest):
     """Test if we can connect to the local Ollama endpoint and check active models."""
     import requests
     url = request.url.strip().rstrip('/')
+    if not is_safe_ollama_url(url):
+        return {
+            "status": "error",
+            "message": "Only local Ollama hosts are allowed (localhost, ollama, finance_ollama, host.docker.internal).",
+        }
     try:
         response = requests.get(f"{url}/api/tags", timeout=3)
         if response.status_code == 200:
             data = response.json()
             models = [m.get("name") for m in data.get("models", [])]
             return {
-                "status": "success", 
+                "status": "success",
                 "models": models,
-                "message": f"Connected successfully! Available models: {', '.join(models) or 'none'}"
+                "message": f"Connected successfully! Available models: {', '.join(models) or 'none'}",
             }
-        else:
-            return {"status": "error", "message": f"Server responded with status code: {response.status_code}"}
+        return {"status": "error", "message": f"Server responded with status code: {response.status_code}"}
     except Exception as e:
         logger.error(f"Error testing Ollama connection: {str(e)}")
-        return {"status": "error", "message": f"Failed to connect: {str(e)}"}
+        return {"status": "error", "message": "Failed to connect to Ollama."}
 
 @app.post("/api/settings/test-db")
 def test_database_connection(request: TestDatabaseRequest):
     """Test if we can establish a connection with the PostgreSQL connection string."""
-    from sqlalchemy import create_engine
+    from urllib.parse import urlparse
+    from sqlalchemy import create_engine, text as sa_text
     conn_str = request.conn_string.strip()
+    parsed = urlparse(conn_str)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in ("postgresql", "postgres", "postgresql+psycopg2") or host not in {
+        "localhost", "127.0.0.1", "db", "finance_db"
+    }:
+        return {"status": "error", "message": "Only local PostgreSQL hosts are allowed."}
     try:
-        engine = create_engine(conn_str)
-        with engine.connect() as conn:
-            from sqlalchemy import text
-            conn.execute(text("SELECT 1"))
+        test_engine = create_engine(conn_str, pool_pre_ping=True)
+        with test_engine.connect() as conn:
+            conn.execute(sa_text("SELECT 1"))
+        test_engine.dispose()
         return {"status": "success", "message": "Successfully established database connection."}
     except Exception as e:
         logger.error(f"Error testing DB connection: {str(e)}")
-        return {"status": "error", "message": f"Database connection failed: {str(e)}"}
+        return {"status": "error", "message": "Database connection failed."}
 
 @app.get("/api/cards", response_model=List[CreditCardResponse])
 def get_credit_cards(db: Session = Depends(get_db)):
@@ -1026,6 +1056,8 @@ def run_bridge_algorithm(db: Session):
     txs = db.query(Transaction).options(joinedload(Transaction.account)).filter(Transaction.is_excluded_from_spending == False).all()
     
     for tx in txs:
+        if not tx.account:
+            continue
         desc_lower = tx.description.lower() if tx.description else ""
         
         # CC Payment Received (Cash In to CC)
@@ -1035,19 +1067,20 @@ def run_bridge_algorithm(db: Session):
             tx.category = "Transfer"
             
         # CC Bill Payment from Savings (Cash Out from Savings)
-        elif tx.account.subtype in [AccountSubtype.SAVINGS, AccountSubtype.CURRENT] and tx.amount < 0 and ("credit card" in desc_lower or "cc payment" in desc_lower):
+        elif tx.account.subtype in [AccountSubtype.SAVINGS, AccountSubtype.CURRENT] and tx.amount < 0 and (
+            "credit card" in desc_lower
+            or "cc payment" in desc_lower
+            or "billdesk" in desc_lower
+            or "mb/ib payment" in desc_lower
+        ):
             tx.transaction_type = TransactionType.CC_BILL_PAYMENT
             tx.is_excluded_from_spending = True
             tx.category = "Transfer"
             
-        # Internal Transfer
-        elif tx.account.subtype in [AccountSubtype.SAVINGS, AccountSubtype.CURRENT] and ("transfer" in desc_lower or "neft" in desc_lower or "imps" in desc_lower):
-            # A more robust system would match amounts and dates between accounts
-            # For now, we will mark it as TRANSFER_INTERNAL if it looks like a self transfer
-            if "self" in desc_lower or "own account" in desc_lower:
-                tx.transaction_type = TransactionType.TRANSFER_INTERNAL
-                tx.is_excluded_from_spending = True
-                tx.category = "Transfer"
+        elif any(k in desc_lower for k in ("neft", "rtgs", "imps", "internal fund", "own account", "self transfer", "to self")):
+            tx.transaction_type = TransactionType.TRANSFER_INTERNAL
+            tx.is_excluded_from_spending = True
+            tx.category = "Transfer"
                 
     try:
         db.commit()

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 const FinanceContext = createContext();
 
@@ -13,6 +13,22 @@ export const FinanceProvider = ({ children }) => {
   const [savingsCashflow, setSavingsCashflow] = useState(null);
   const [creditCardSummary, setCreditCardSummary] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [ledgerFocus, setLedgerFocus] = useState(null);
+
+  const openInLedger = useCallback((filters = {}) => {
+    setLedgerFocus({
+      ts: Date.now(),
+      month: 'ALL',
+      category: 'ALL',
+      search: '',
+      flow: 'ALL',
+      date: '',
+      rail: 'ALL',
+      ...filters
+    });
+  }, []);
+
+  const clearLedgerFocus = useCallback(() => setLedgerFocus(null), []);
 
   // Background non-blocking upload state
   const [activeUpload, setActiveUpload] = useState(null);
@@ -190,17 +206,14 @@ export const FinanceProvider = ({ children }) => {
     localStorage.setItem('rules', JSON.stringify(updated));
   };
 
-  // Overridden transactions with rule engine (only applied to unverified transactions)
-  const processedTransactions = transactions.map(tx => {
-    if (tx.verified) {
+  const processedTransactions = useMemo(() => (
+    transactions.map(tx => {
+      if (tx.verified) return tx;
+      const matchingRule = rules.find(r => tx.description?.toUpperCase().includes(r.keyword.toUpperCase()));
+      if (matchingRule) return { ...tx, category: matchingRule.category };
       return tx;
-    }
-    const matchingRule = rules.find(r => tx.description?.toUpperCase().includes(r.keyword.toUpperCase()));
-    if (matchingRule) {
-      return { ...tx, category: matchingRule.category };
-    }
-    return tx;
-  });
+    })
+  ), [transactions, rules]);
 
   return (
     <FinanceContext.Provider value={{
@@ -222,7 +235,10 @@ export const FinanceProvider = ({ children }) => {
       dismissUploadSnackbar,
       addRule,
       deleteRule,
-      setTransactions
+      setTransactions,
+      ledgerFocus,
+      openInLedger,
+      clearLedgerFocus
     }}>
       {children}
     </FinanceContext.Provider>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { useToast } from '../../context/ToastContext';
@@ -61,6 +61,20 @@ export const SettingsView = () => {
       setRuleCategory(categories[0]?.name);
     }
   }, [categories, ruleCategory]);
+
+  const accountsByBank = useMemo(() => {
+    const groups = [];
+    const index = new Map();
+    for (const acc of accounts) {
+      const key = acc.bank?.name || 'Other';
+      if (!index.has(key)) {
+        index.set(key, groups.length);
+        groups.push({ bank: key, items: [] });
+      }
+      groups[index.get(key)].items.push(acc);
+    }
+    return groups;
+  }, [accounts]);
 
   // Handle Add Category
   const handleAddCategory = async (e) => {
@@ -267,7 +281,7 @@ export const SettingsView = () => {
           <div className="flex items-center gap-2">
             <Landmark className="h-5 w-5 text-emerald-400" />
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              <h3 className={`text-xs font-bold uppercase tracking-wider ${style('text-slate-200', 'text-slate-700')}`}>
                 Connected Bank Accounts ({accounts.length})
               </h3>
               <span className="text-xs text-slate-400 font-normal">
@@ -290,50 +304,67 @@ export const SettingsView = () => {
             No bank accounts added yet. Click &quot;Add Bank Account&quot; to link an account.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {accounts.map(acc => {
-              const bankName = acc.bank?.name || 'Bank';
-              const bal = parseFloat(acc.balance || 0);
-
-              return (
-                <div 
-                  key={acc.id}
-                  className={`p-3.5 px-4 rounded-xl flex items-center justify-between border-0 ${style('neu-inset-dark', 'neu-inset-light')}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${style('bg-slate-800/40 text-slate-300', 'bg-slate-200 text-slate-700')}`}>
-                      <Landmark className="h-4 w-4" />
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs font-bold">{acc.name}</span>
-                      <span className="text-xs text-slate-400 font-normal">
-                        {bankName} • <span className="font-semibold text-indigo-400 uppercase">{acc.subtype}</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-col items-end">
-                      <span className={`text-xs font-bold tabular-nums ${bal >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {formatCurrency(bal)}
-                      </span>
-                      <span className="text-xs text-slate-400 font-semibold uppercase">
-                        {acc.classification}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteAccount(acc.id, acc.name)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 border-0 bg-transparent cursor-pointer transition-colors"
-                      title="Delete Account"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+          <div className="flex flex-col gap-5">
+            {accountsByBank.map(group => (
+              <div key={group.bank} className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 px-0.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    {group.bank}
+                  </span>
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${style('bg-slate-800/50 text-slate-500', 'bg-slate-200 text-slate-500')}`}>
+                    {group.items.length}
+                  </span>
                 </div>
-              );
-            })}
+                <div className="flex flex-col gap-2">
+                  {group.items.map(acc => {
+                    const bal = parseFloat(acc.balance || 0);
+                    const isLiability = String(acc.classification || '').toUpperCase() === 'LIABILITY' || bal < 0;
+
+                    return (
+                      <div
+                        key={acc.id}
+                        className={`p-4 rounded-2xl flex items-center gap-3 min-w-0 border-0 ${style('neu-inset-dark', 'neu-inset-light')}`}
+                      >
+                        <div className={`p-2.5 rounded-xl shrink-0 ${style('bg-[#181828] text-slate-400', 'bg-white text-slate-500')}`}>
+                          <Landmark className="h-4 w-4" />
+                        </div>
+
+                        <div className="flex flex-col min-w-0 flex-1 gap-1.5">
+                          <span className={`text-sm font-semibold truncate ${style('text-slate-100', 'text-slate-800')}`} title={acc.name}>
+                            {acc.name}
+                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${style('bg-indigo-500/10 text-indigo-300', 'bg-indigo-100 text-indigo-600')}`}>
+                              {acc.subtype || 'Account'}
+                            </span>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                              isLiability
+                                ? 'bg-red-500/10 text-red-400'
+                                : 'bg-emerald-500/10 text-emerald-400'
+                            }`}>
+                              {acc.classification || (isLiability ? 'Liability' : 'Asset')}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className={`text-sm font-bold tabular-nums shrink-0 ${isLiability ? 'text-red-400' : 'text-emerald-400'}`}>
+                          {formatCurrency(bal)}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAccount(acc.id, acc.name)}
+                          className={`p-2 rounded-xl shrink-0 border-0 cursor-pointer transition-colors ${style('text-slate-500 hover:text-red-400 hover:bg-red-500/10', 'text-slate-400 hover:text-red-500 hover:bg-red-50')}`}
+                          title="Delete Account"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -344,7 +375,7 @@ export const SettingsView = () => {
           <div className="flex items-center gap-2">
             <CreditCard className="h-5 w-5 text-indigo-400" />
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              <h3 className={`text-xs font-bold uppercase tracking-wider ${style('text-slate-200', 'text-slate-700')}`}>
                 Registered Credit Cards ({cards.length})
               </h3>
               <span className="text-xs text-slate-400 font-normal">
@@ -378,7 +409,7 @@ export const SettingsView = () => {
                   <div className="flex flex-col min-w-0">
                     <span className="text-xs font-bold truncate">{card.card_name}</span>
                     <span className="text-xs text-slate-400 font-normal">
-                      Statement Day: <strong className="text-slate-300">{card.statement_date}</strong> • Credit Limit: <strong className="text-slate-300">{formatCurrency(card.monthly_cap || 100000, false)}</strong>
+                      Statement Day: <strong className={style('text-slate-200', 'text-slate-700')}>{card.statement_date}</strong> • Credit Limit: <strong className={style('text-slate-200', 'text-slate-700')}>{formatCurrency(card.monthly_cap || 100000, false)}</strong>
                     </span>
                   </div>
                 </div>
@@ -413,7 +444,7 @@ export const SettingsView = () => {
           <div className="flex items-center gap-2">
             <Tag className="h-5 w-5 text-amber-400" />
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              <h3 className={`text-xs font-bold uppercase tracking-wider ${style('text-slate-200', 'text-slate-700')}`}>
                 Spend Categories ({categories.length})
               </h3>
               <span className="text-xs text-slate-400 font-normal">
@@ -533,7 +564,7 @@ export const SettingsView = () => {
               className={`p-2.5 px-3 rounded-xl flex items-center justify-between border-0 ${style('neu-inset-dark', 'neu-inset-light')}`}
             >
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono font-bold text-slate-300">
+                <span className={`text-xs font-mono font-bold ${style('text-slate-200', 'text-slate-700')}`}>
                   {rule.keyword}
                 </span>
                 <span className="text-xs text-slate-400">&rarr;</span>
@@ -574,7 +605,7 @@ export const SettingsView = () => {
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex flex-col">
-            <span className="text-xs font-bold text-slate-200">
+            <span className={`text-xs font-bold ${style('text-slate-100', 'text-slate-800')}`}>
               Purge All Transaction Data
             </span>
             <span className="text-xs text-slate-400 font-normal">

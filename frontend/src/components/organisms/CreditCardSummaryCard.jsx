@@ -4,58 +4,45 @@ import { useFinance } from '../../context/FinanceContext';
 import { Badge } from '../atoms/Badge';
 import { NetworkLogo } from '../atoms/NetworkLogo';
 import { formatCurrency } from '../../utils/formatters';
+import { getNextDueDate, cardTotalAmountDue } from '../../utils/analytics';
 import { CreditCard, Calendar } from 'lucide-react';
 
 export const CreditCardSummaryCard = ({ onSelectCard }) => {
   const { style } = useTheme();
-  const { cards, accounts, transactions } = useFinance();
+  const { cards, accounts, transactions, statements } = useFinance();
 
-  // Compute total payment per card in current cycle
   const cardStats = React.useMemo(() => {
     const today = new Date();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
+    today.setHours(0, 0, 0, 0);
 
     return cards.map(card => {
       const allCardTxs = transactions.filter(t => String(t.account_id) === String(card.account_id));
-      const totalDebits = allCardTxs.filter(t => parseFloat(t.amount) < 0).reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
-
-      const isBillPaymentTx = (t) => {
-        const desc = (t.description || '').toUpperCase();
-        return t.transaction_type === 'CC_PAYMENT_RECEIVED' || 
-          desc.includes('PAYMENT') || 
-          desc.includes('MB/IB') || 
-          desc.includes('AUTODEBIT') || 
-          desc.includes('BILLDESK') || 
-          desc.includes('NEFT') || 
-          desc.includes('IMPS');
-      };
-
-      const credits = allCardTxs.filter(t => parseFloat(t.amount) > 0);
-      const refundsAndCashbacks = credits
-        .filter(t => !isBillPaymentTx(t))
-        .reduce((sum, t) => sum + parseFloat(t.amount), 0);
-
-      const totalPayment = Math.max(0, totalDebits - refundsAndCashbacks);
-      
-      const stmtDay = parseInt(card.statement_date) || 1;
-      let dueDay = stmtDay + 20;
-      let dueMonth = currentMonth;
-      if (dueDay > 30) {
-        dueDay -= 30;
-        dueMonth = (dueMonth + 1) % 12;
+      const dueAmt = cardTotalAmountDue({
+        transactions: allCardTxs,
+        statements,
+        accountId: card.account_id
+      });
+      const stmtDue = dueAmt.statement?.due_date;
+      let due;
+      if (stmtDue) {
+        const dueDate = new Date(stmtDue);
+        dueDate.setHours(0, 0, 0, 0);
+        due = {
+          formattedDate: dueDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+          daysRemaining: Math.round((dueDate - today) / (1000 * 60 * 60 * 24))
+        };
+      } else {
+        due = getNextDueDate(card, today);
       }
-      const dueDate = new Date(currentYear, dueMonth, dueDay);
-      const diffDays = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
 
       return {
         ...card,
-        totalPayment,
-        dueDayText: `${dueDay} ${dueDate.toLocaleString('en-US', { month: 'short' })}`,
-        diffDays: diffDays >= 0 ? diffDays : 30 + diffDays
+        totalPayment: dueAmt.amount,
+        dueDayText: due.formattedDate,
+        diffDays: due.daysRemaining
       };
     });
-  }, [cards, accounts, transactions]);
+  }, [cards, accounts, transactions, statements]);
 
   const totalOutstanding = cardStats.reduce((sum, c) => sum + c.totalPayment, 0);
 

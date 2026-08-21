@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { useToast } from '../../context/ToastContext';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, toLocalDateKey } from '../../utils/formatters';
+import { isInternalFlow, matchesPaymentRail } from '../../utils/analytics';
 import { Badge } from '../atoms/Badge';
 import { Button } from '../atoms/Button';
 import { 
@@ -16,7 +17,9 @@ import {
   TrendingDown, 
   CheckCircle2, 
   Landmark,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -30,7 +33,7 @@ import {
 
 export const TransactionLedgerView = () => {
   const { theme, style } = useTheme();
-  const { transactions, accounts, banks, categories, fetchData, setTransactions } = useFinance();
+  const { transactions, accounts, banks, categories, fetchData, setTransactions, ledgerFocus, clearLedgerFocus } = useFinance();
 
   const [selectedBankId, setSelectedBankId] = useState('ALL');
   const [selectedAccountFilter, setSelectedAccountFilter] = useState('ALL');
@@ -38,6 +41,23 @@ export const TransactionLedgerView = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [selectedMonth, setSelectedMonth] = useState('ALL');
+  const [flowFilter, setFlowFilter] = useState('ALL');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [railFilter, setRailFilter] = useState('ALL');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
+
+  useEffect(() => {
+    if (!ledgerFocus?.ts) return;
+    setSelectedMonth(ledgerFocus.month || 'ALL');
+    setSelectedCategoryFilter(ledgerFocus.category || 'ALL');
+    setSearchQuery(ledgerFocus.search || '');
+    setFlowFilter(ledgerFocus.flow || 'ALL');
+    setSelectedDate(ledgerFocus.date || '');
+    setRailFilter(ledgerFocus.rail || 'ALL');
+    setSelectedBankId('ALL');
+    setSelectedAccountFilter('ALL');
+  }, [ledgerFocus]);
 
   // Only show banks that have at least one account registered
   const activeBanks = useMemo(() => {
@@ -102,9 +122,35 @@ export const TransactionLedgerView = () => {
         if (!descMatch && !catMatch && !subMatch) return false;
       }
 
+      if (selectedDate) {
+        if (toLocalDateKey(tx.date) !== selectedDate) return false;
+      }
+
+      const amt = parseFloat(tx.amount);
+      const internal = isInternalFlow(tx);
+      if (flowFilter === 'OUTFLOW' && !(amt < 0 && !internal)) return false;
+      if (flowFilter === 'INFLOW' && !(amt > 0 && !internal)) return false;
+      if (flowFilter === 'TRANSFERS' && !internal) return false;
+
+      if (!matchesPaymentRail(tx, accounts, railFilter)) return false;
+
       return true;
     });
-  }, [transactions, accounts, selectedBankId, selectedAccountFilter, selectedCategoryFilter, selectedMonth, searchQuery]);
+  }, [transactions, accounts, selectedBankId, selectedAccountFilter, selectedCategoryFilter, selectedMonth, searchQuery, selectedDate, flowFilter, railFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
+  const pagedTransactions = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredTransactions.slice(start, start + PAGE_SIZE);
+  }, [filteredTransactions, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [selectedBankId, selectedAccountFilter, selectedCategoryFilter, selectedMonth, searchQuery, selectedDate, flowFilter, railFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   // Bank-specific chart data
   const bankChartData = useMemo(() => {
@@ -280,6 +326,34 @@ export const TransactionLedgerView = () => {
       )}
 
       {/* 3. Search & Filter Bar */}
+      {ledgerFocus?.ts && (
+        <div className={`px-4 py-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs font-semibold ${style('neu-inset-dark text-slate-300', 'neu-inset-light text-slate-700')}`}>
+          <span>
+            Filtered from Stats
+            {selectedMonth !== 'ALL' ? ` · ${selectedMonth}` : ''}
+            {selectedDate ? ` · ${selectedDate}` : ''}
+            {selectedCategoryFilter !== 'ALL' ? ` · ${selectedCategoryFilter}` : ''}
+            {flowFilter !== 'ALL' ? ` · ${flowFilter}` : ''}
+            {railFilter !== 'ALL' ? ` · ${railFilter}` : ''}
+            {searchQuery ? ` · “${searchQuery}”` : ''}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedMonth('ALL');
+              setSelectedCategoryFilter('ALL');
+              setSearchQuery('');
+              setFlowFilter('ALL');
+              setSelectedDate('');
+              setRailFilter('ALL');
+              clearLedgerFocus();
+            }}
+            className="text-[#FF7E67] border-0 bg-transparent cursor-pointer font-bold"
+          >
+            Clear
+          </button>
+        </div>
+      )}
       <div className={`p-4 px-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 border-0 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
         <div className="relative w-full sm:w-72">
           <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -293,6 +367,17 @@ export const TransactionLedgerView = () => {
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+          <select
+            value={flowFilter}
+            onChange={e => setFlowFilter(e.target.value)}
+            className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 cursor-pointer ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
+          >
+            <option value="ALL">All flows</option>
+            <option value="OUTFLOW">Outflow</option>
+            <option value="INFLOW">Inflow</option>
+            <option value="TRANSFERS">Transfers</option>
+          </select>
+
           {/* Account Filter */}
           <select
             value={selectedAccountFilter}
@@ -333,10 +418,15 @@ export const TransactionLedgerView = () => {
 
       {/* 4. Transactions Data Table */}
       <div className={`p-6 rounded-2xl border-0 flex flex-col gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
             Transactions Log ({filteredTransactions.length})
           </h4>
+          {filteredTransactions.length > 0 && (
+            <span className="text-[10px] font-semibold text-slate-500">
+              Page {page} of {totalPages} · {PAGE_SIZE} per page
+            </span>
+          )}
         </div>
 
         {filteredTransactions.length === 0 ? (
@@ -358,7 +448,7 @@ export const TransactionLedgerView = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/40">
-                {filteredTransactions.map(tx => {
+                {pagedTransactions.map(tx => {
                   const isEditing = editingTxId === tx.id;
                   const amt = parseFloat(tx.amount);
                   const isIncome = amt > 0;
@@ -489,7 +579,7 @@ export const TransactionLedgerView = () => {
           </div>
 
           <div className="md:hidden flex flex-col gap-3">
-            {filteredTransactions.map(tx => {
+            {pagedTransactions.map(tx => {
               const isEditing = editingTxId === tx.id;
               const amt = parseFloat(tx.amount);
               const isIncome = amt > 0;
@@ -520,7 +610,7 @@ export const TransactionLedgerView = () => {
                 <div key={tx.id} className={`p-4 rounded-xl flex flex-col gap-2 ${style('bg-slate-800/30', 'bg-slate-50')}`}>
                   <div className="flex justify-between items-start">
                     <div className="flex flex-col">
-                      <span className="font-bold text-sm text-slate-200 truncate max-w-[200px]" title={tx.description}>{tx.description}</span>
+                      <span className={`font-bold text-sm truncate max-w-[200px] ${style('text-slate-100', 'text-slate-800')}`} title={tx.description}>{tx.description}</span>
                       <span className="text-xs text-slate-400">{formatDate(tx.date, 'short')} &bull; {acc?.name || 'Bank Account'}</span>
                     </div>
                     <span className={`font-extrabold text-sm ${isIncome ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -545,6 +635,30 @@ export const TransactionLedgerView = () => {
               );
             })}
           </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className={`inline-flex items-center gap-1 min-h-10 px-3 rounded-xl text-xs font-bold border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${style('neu-btn-dark text-slate-300', 'neu-btn-light text-slate-700')}`}
+              >
+                <ChevronLeft className="h-4 w-4" /> Prev
+              </button>
+              <span className="text-xs font-semibold text-slate-400">
+                {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, filteredTransactions.length)} of {filteredTransactions.length}
+              </span>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                className={`inline-flex items-center gap-1 min-h-10 px-3 rounded-xl text-xs font-bold border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${style('neu-btn-dark text-slate-300', 'neu-btn-light text-slate-700')}`}
+              >
+                Next <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
 
         </>
         )}

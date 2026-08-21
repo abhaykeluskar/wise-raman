@@ -15,7 +15,7 @@ export const UploadSnackbar = () => {
   const isLoading = !isSuccess && !isError;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 max-w-md w-[90vw] sm:w-[420px] animate-in fade-in slide-in-from-bottom-5 duration-300">
+    <div className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-50 max-w-md w-[min(90vw,420px)] animate-in fade-in slide-in-from-bottom-5 duration-300">
       <div className={`p-4 rounded-2xl border-0 shadow-2xl flex flex-col gap-3 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
         
         {/* Header */}
@@ -49,7 +49,7 @@ export const UploadSnackbar = () => {
         {/* Status Line / Phase */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between text-xxs font-semibold">
-            <span className={`truncate max-w-[280px] ${isSuccess ? 'text-emerald-400' : isError ? 'text-red-400' : isAi ? 'text-purple-300' : 'text-slate-300'}`}>
+            <span className={`truncate max-w-[280px] ${isSuccess ? 'text-emerald-400' : isError ? 'text-red-400' : isAi ? 'text-purple-300' : style('text-slate-300', 'text-slate-600')}`}>
               {activeUpload.phase}
             </span>
             {isLoading && (
@@ -75,7 +75,7 @@ export const UploadSnackbar = () => {
 
           {/* Additional details on finish */}
           {(isSuccess || isError) && activeUpload.message && (
-            <span className={`text-[11px] leading-tight ${isSuccess ? 'text-slate-300' : 'text-red-300'}`}>
+            <span className={`text-[11px] leading-tight ${isSuccess ? style('text-slate-300', 'text-slate-600') : 'text-red-400'}`}>
               {activeUpload.message}
             </span>
           )}

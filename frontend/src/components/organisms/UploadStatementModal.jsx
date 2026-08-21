@@ -86,6 +86,7 @@ export const UploadStatementModal = ({ isOpen, onClose }) => {
             <option value="PDF">PDF Document (Digital / Scanned)</option>
             <option value="CSV">CSV Data File</option>
             <option value="XLSX">Excel (XLSX)</option>
+            <option value="XLS">Excel (XLS)</option>
           </Select>
 
           <Select
@@ -148,6 +149,11 @@ export const UploadStatementModal = ({ isOpen, onClose }) => {
             <input
               type="file"
               required
+              accept={
+                fileType === 'PDF' ? '.pdf,application/pdf'
+                  : fileType === 'CSV' ? '.csv,text/csv'
+                  : '.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              }
               onChange={e => setSelectedFile(e.target.files[0])}
               className={`block w-full text-xs text-slate-400 rounded-xl px-3 py-2 border-0 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-600/15 file:text-indigo-400 hover:file:bg-indigo-600/25 file:cursor-pointer ${style('neu-inset-dark', 'neu-inset-light')}`}
             />

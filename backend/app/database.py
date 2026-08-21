@@ -4,7 +4,7 @@ from app.config import settings
 
 DATABASE_URL = settings.DATABASE_URL
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=5, max_overflow=10)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -23,6 +23,7 @@ def init_db():
         try:
             conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fingerprint VARCHAR(64);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_transactions_fingerprint ON transactions (fingerprint);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_transactions_account_fingerprint ON transactions (account_id, fingerprint);"))
         except Exception:
             pass
         conn.commit()

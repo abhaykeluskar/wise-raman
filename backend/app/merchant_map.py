@@ -97,6 +97,12 @@ MERCHANT_RULES = [
     (r"ATM\s*WITHDRAWAL|CASH\s*WDL", "Cash Withdrawal", "Others", "ATM Cash")
 ]
 
+COMPILED_RULES = [
+    (re.compile(pattern, re.IGNORECASE), name, cat, subcat)
+    for pattern, name, cat, subcat in MERCHANT_RULES
+]
+
+
 def match_known_merchant(raw_text: str) -> Optional[Tuple[str, str, str]]:
     """
     Checks if raw description matches a known Indian merchant pattern.
@@ -104,8 +110,7 @@ def match_known_merchant(raw_text: str) -> Optional[Tuple[str, str, str]]:
     """
     if not raw_text:
         return None
-    raw_upper = raw_text.upper()
-    for pattern, name, cat, subcat in MERCHANT_RULES:
-        if re.search(pattern, raw_upper, re.IGNORECASE):
+    for compiled, name, cat, subcat in COMPILED_RULES:
+        if compiled.search(raw_text):
             return name, cat, subcat
     return None

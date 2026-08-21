@@ -3,7 +3,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { X, TrendingUp, TrendingDown, Store, ListOrdered } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts';
 
-export const AnalyticsDrilldownModal = ({ category, transactions, onClose }) => {
+export const AnalyticsDrilldownModal = ({ category, transactions, onClose, onOpenInLedger }) => {
   const { theme, style } = useTheme();
 
   if (!category) return null;
@@ -70,12 +70,24 @@ export const AnalyticsDrilldownModal = ({ category, transactions, onClose }) => 
             <h2 className={`text-2xl font-black ${style('text-white', 'text-slate-800')}`}>{category}</h2>
             <p className="text-sm text-slate-500 font-medium">{categoryTxs.length} transactions total</p>
           </div>
-          <button 
-            onClick={onClose}
-            className={`p-2 rounded-full ${style('hover:bg-[#24243E] text-slate-400 hover:text-white', 'hover:bg-slate-200 text-slate-500 hover:text-slate-800')} transition-colors`}
-          >
-            <X className="h-6 w-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenInLedger && (
+              <button
+                type="button"
+                onClick={onOpenInLedger}
+                className={`px-3 py-2 rounded-xl text-xs font-bold border-0 cursor-pointer ${style('neu-btn-dark text-[#FF7E67]', 'neu-btn-light text-[#4A90E2]')}`}
+              >
+                Open in Ledger
+              </button>
+            )}
+            <button 
+              type="button"
+              onClick={onClose}
+              className={`p-2 rounded-full ${style('hover:bg-[#24243E] text-slate-400 hover:text-white', 'hover:bg-slate-200 text-slate-500 hover:text-slate-800')} transition-colors`}
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8">

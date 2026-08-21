@@ -7,6 +7,15 @@ export const ThemeProvider = ({ children }) => {
 
   useEffect(() => {
     localStorage.setItem('theme', theme);
+    const root = document.documentElement;
+    const isDark = theme === 'dark';
+    root.style.colorScheme = theme;
+    root.classList.toggle('dark', isDark);
+    root.classList.toggle('light', !isDark);
+    document.body.classList.toggle('dark', isDark);
+    document.body.classList.toggle('light', !isDark);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isDark ? '#181828' : '#E0E5EC');
   }, [theme]);
 
   // Neumorphic style resolver based on active theme

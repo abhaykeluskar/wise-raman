@@ -9,17 +9,17 @@ import { Activity, PieChart as PieChartIcon, BarChart3, Layers, Eye, EyeOff } fr
 import { CalendarHeatmap } from '../organisms/CalendarHeatmap';
 import { AnalyticsDrilldownModal } from '../organisms/AnalyticsDrilldownModal';
 import { RecurringBillsWatchdog } from '../organisms/RecurringBillsWatchdog';
+import { isInternalFlow } from '../../utils/analytics';
 
 export const AnalyticsView = () => {
   const { theme, style } = useTheme();
-  const { transactions, accounts } = useFinance();
+  const { transactions, accounts, openInLedger } = useFinance();
   
   const [timeframe, setTimeframe] = useState('all');
   const [flowFilter, setFlowFilter] = useState('OUTFLOW'); 
   const [activeCategory, setActiveCategory] = useState(null);
   const [showSavingsLine, setShowSavingsLine] = useState(true);
 
-  // Time-filtered transactions
   const timeFilteredTxs = useMemo(() => {
     if (timeframe === 'all') return transactions;
     const now = new Date();
@@ -30,16 +30,10 @@ export const AnalyticsView = () => {
     return transactions.filter(t => new Date(t.date) >= cutoff);
   }, [transactions, timeframe]);
 
-  // Flow-filtered transactions (for Category chart & Payment Rails)
   const filteredTxs = useMemo(() => {
     return timeFilteredTxs.filter(tx => {
       const amt = parseFloat(tx.amount);
-      const isInternal = tx.transaction_type === 'TRANSFER_INTERNAL' || 
-                         tx.transaction_type === 'CC_BILL_PAYMENT' || 
-                         tx.transaction_type === 'CC_PAYMENT_RECEIVED' ||
-                         tx.category === 'Transfer' ||
-                         tx.category === 'Repayments';
-      
+      const isInternal = isInternalFlow(tx);
       if (flowFilter === 'ALL') return true;
       if (flowFilter === 'OUTFLOW') return amt < 0 && !isInternal && !tx.is_excluded_from_spending;
       if (flowFilter === 'INFLOW') return amt > 0 && !isInternal;
@@ -48,17 +42,23 @@ export const AnalyticsView = () => {
     });
   }, [timeFilteredTxs, flowFilter]);
 
+  const goToLedger = (filters) => {
+    openInLedger({
+      flow: flowFilter,
+      ...filters
+    });
+  };
+
+  const payloadRow = (data) => data?.payload || data || {};
+
   // 1. Dynamic Stacked Categories for Burn Rate
   const { topCategoryKeys, burnRateData } = useMemo(() => {
-    // Find top 4 spend categories across timeFilteredTxs
     const categoryTotals = {};
-    timeFilteredTxs.forEach(tx => {
+    filteredTxs.forEach(tx => {
       const amt = parseFloat(tx.amount);
-      const isInternal = tx.transaction_type === 'TRANSFER_INTERNAL' || 
-                         tx.transaction_type === 'CC_BILL_PAYMENT' || 
-                         tx.category === 'Transfer' ||
-                         tx.category === 'Repayments';
-      if (amt < 0 && !tx.is_excluded_from_spending && !isInternal) {
+      if (flowFilter === 'INFLOW' && amt <= 0) return;
+      if (flowFilter !== 'INFLOW' && amt >= 0 && flowFilter !== 'ALL' && flowFilter !== 'TRANSFERS') return;
+      if (amt < 0 || flowFilter === 'INFLOW' || (flowFilter === 'TRANSFERS' && amt !== 0)) {
         const cat = tx.category || 'Other';
         categoryTotals[cat] = (categoryTotals[cat] || 0) + Math.abs(amt);
       }
@@ -69,44 +69,48 @@ export const AnalyticsView = () => {
       .map(entry => entry[0]);
     const top4 = sortedCats.slice(0, 4);
 
-    // Group monthly
     const grouped = {};
-    timeFilteredTxs.forEach(tx => {
+    filteredTxs.forEach(tx => {
       const amt = parseFloat(tx.amount);
+      if (!tx.date) return;
       const d = new Date(tx.date);
       const key = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-      
+      const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
       if (!grouped[key]) {
-        grouped[key] = { 
-          name: key, 
-          timestamp: d.getTime(), 
-          Income: 0, 
-          TotalSpend: 0, 
-          Other: 0 
+        grouped[key] = {
+          name: key,
+          yearMonth,
+          timestamp: d.getTime(),
+          Income: 0,
+          TotalSpend: 0,
+          Transfers: 0,
+          Other: 0
         };
         top4.forEach(cat => { grouped[key][cat] = 0; });
       }
-      
-      const isInternal = tx.transaction_type === 'TRANSFER_INTERNAL' || 
-                         tx.transaction_type === 'CC_BILL_PAYMENT' || 
-                         tx.transaction_type === 'CC_PAYMENT_RECEIVED' ||
-                         tx.category === 'Transfer' ||
-                         tx.category === 'Repayments';
 
+      const isInternal = isInternalFlow(tx);
+      if (isInternal) {
+        grouped[key].Transfers += Math.abs(amt);
+      }
       if (amt > 0 && !isInternal) {
         grouped[key].Income += amt;
       } else if (amt < 0 && !tx.is_excluded_from_spending && !isInternal) {
         const spendAmt = Math.abs(amt);
         grouped[key].TotalSpend += spendAmt;
         const cat = tx.category || 'Other';
-        if (top4.includes(cat)) {
-          grouped[key][cat] += spendAmt;
-        } else {
-          grouped[key].Other += spendAmt;
+        if (top4.includes(cat)) grouped[key][cat] += spendAmt;
+        else grouped[key].Other += spendAmt;
+      } else if (isInternal) {
+        const cat = tx.category || 'Other';
+        if (flowFilter === 'TRANSFERS') {
+          if (top4.includes(cat)) grouped[key][cat] = (grouped[key][cat] || 0) + Math.abs(amt);
+          else grouped[key].Other += Math.abs(amt);
         }
       }
     });
-    
+
     const result = Object.values(grouped).sort((a, b) => a.timestamp - b.timestamp);
     result.forEach(r => {
       if (r.Income > 0) {
@@ -115,62 +119,59 @@ export const AnalyticsView = () => {
         if (rate > 100) rate = 100;
         r.SavingsRate = Math.round(rate * 10) / 10;
       } else {
-        // If no income recorded for that month, don't plot wild 0% / -100% lines
         r.SavingsRate = null;
       }
     });
 
     return { topCategoryKeys: top4, burnRateData: result };
-  }, [timeFilteredTxs]);
+  }, [filteredTxs, flowFilter]);
 
   // 2. Category Breakdown (Bar Chart)
   const categoryData = useMemo(() => {
     const grouped = {};
     filteredTxs.forEach(tx => {
       const amt = parseFloat(tx.amount);
-      if (amt < 0) {
-        const cat = tx.category || 'Other';
-        if (!grouped[cat]) grouped[cat] = { name: cat, Spend: 0 };
-        grouped[cat].Spend += Math.abs(amt);
-      }
+      if (flowFilter === 'INFLOW' && amt <= 0) return;
+      if (flowFilter === 'OUTFLOW' && amt >= 0) return;
+      if (amt === 0) return;
+      const cat = tx.category || 'Other';
+      if (!grouped[cat]) grouped[cat] = { name: cat, Spend: 0 };
+      grouped[cat].Spend += Math.abs(amt);
     });
     return Object.values(grouped).sort((a, b) => b.Spend - a.Spend).slice(0, 10);
-  }, [filteredTxs]);
+  }, [filteredTxs, flowFilter]);
 
   // 3. Payment Rail Donut
   const paymentRailData = useMemo(() => {
     let upi = 0, cc = 0, other = 0;
     filteredTxs.forEach(tx => {
       const amt = parseFloat(tx.amount);
-      if (amt < 0) {
-        const acct = accounts.find(a => a.id === tx.account_id);
-        const desc = (tx.description || '').toUpperCase();
-        if (desc.includes('UPI') || desc.includes('UPI-') || desc.includes('/UPI/')) {
-          upi += Math.abs(amt);
-        } else if (acct?.subtype === 'CREDIT_CARD') {
-          cc += Math.abs(amt);
-        } else {
-          other += Math.abs(amt);
-        }
+      if (flowFilter === 'OUTFLOW' && amt >= 0) return;
+      if (flowFilter === 'INFLOW' && amt <= 0) return;
+      const acct = accounts.find(a => String(a.id) === String(tx.account_id));
+      const desc = (tx.description || '').toUpperCase();
+      const volume = Math.abs(amt);
+      if (desc.includes('UPI') || desc.includes('UPI-') || desc.includes('/UPI/')) {
+        upi += volume;
+      } else if (acct?.subtype === 'CREDIT_CARD') {
+        cc += volume;
+      } else {
+        other += volume;
       }
     });
     return [
-      { name: 'UPI', value: Math.round(upi) },
-      { name: 'Credit Card', value: Math.round(cc) },
-      { name: 'Debit/NetBanking', value: Math.round(other) }
+      { name: 'UPI', value: Math.round(upi), rail: 'UPI' },
+      { name: 'Credit Card', value: Math.round(cc), rail: 'CREDIT_CARD' },
+      { name: 'Debit/NetBanking', value: Math.round(other), rail: 'OTHER' }
     ].filter(d => d.value > 0);
-  }, [filteredTxs, accounts]);
+  }, [filteredTxs, accounts, flowFilter]);
 
   // 4. Accurate Average Daily Burn & Run-Rate Calculation
   const velocityMetrics = useMemo(() => {
     // Isolate pure spending transactions within active timeframe
     const spendTxs = timeFilteredTxs.filter(tx => {
       const amt = parseFloat(tx.amount);
-      const isInternal = tx.transaction_type === 'TRANSFER_INTERNAL' || 
-                         tx.transaction_type === 'CC_BILL_PAYMENT' || 
-                         tx.category === 'Transfer' ||
-                         tx.category === 'Repayments';
-      return amt < 0 && !isInternal && !tx.is_excluded_from_spending;
+      return amt < 0 && !isInternalFlow(tx) && !tx.is_excluded_from_spending;
     });
 
     const totalSpend = spendTxs.reduce((sum, tx) => sum + Math.abs(parseFloat(tx.amount)), 0);
@@ -223,15 +224,21 @@ export const AnalyticsView = () => {
       <div className={`p-4 sm:p-6 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-0 ${style('neu-flat-dark', 'neu-flat-light')}`}>
         <div className="flex items-center gap-3">
           <Activity className="h-6 w-6 text-[#FF7E67]" />
+        <div className="flex flex-col gap-1">
           <h2 className={`text-xl font-bold ${style('text-white', 'text-slate-800')}`}>Financial Intelligence</h2>
+          <span className="text-[11px] font-semibold text-slate-500">
+            Showing {filteredTxs.length} {flowFilter === 'OUTFLOW' ? 'outflow' : flowFilter === 'INFLOW' ? 'inflow' : flowFilter === 'TRANSFERS' ? 'transfer' : ''} transactions
+          </span>
+        </div>
         </div>
         
         <div className={`flex flex-wrap p-1 rounded-xl gap-1 ${style('bg-[#1a1a2e]', 'bg-slate-200')} self-start sm:self-auto`}>
           {['ALL', 'OUTFLOW', 'INFLOW', 'TRANSFERS'].map((f) => (
             <button
               key={f}
+              type="button"
               onClick={() => setFlowFilter(f)}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border-0 cursor-pointer ${
                 flowFilter === f 
                   ? (theme === 'dark' ? 'bg-[#FF7E67] text-white shadow-lg' : 'bg-white text-slate-800 shadow') 
                   : (theme === 'dark' ? 'text-slate-400 hover:text-slate-200 hover:bg-[#24243E]' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-300')
@@ -242,16 +249,27 @@ export const AnalyticsView = () => {
           ))}
         </div>
 
-        <select
-          value={timeframe}
-          onChange={e => setTimeframe(e.target.value)}
-          className={`rounded-xl px-4 py-2 text-sm font-bold focus:outline-none border-0 cursor-pointer ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-        >
-          <option value="1m">Last 1 Month</option>
-          <option value="3m">Last 3 Months</option>
-          <option value="1y">Last 1 Year</option>
-          <option value="all">All Time</option>
-        </select>
+        <div className={`flex flex-wrap p-1 rounded-xl gap-1 ${style('neu-inset-dark', 'neu-inset-light')} self-start sm:self-auto`}>
+          {[
+            { key: '1m', label: '1M' },
+            { key: '3m', label: '3M' },
+            { key: '1y', label: '1Y' },
+            { key: 'all', label: 'All' },
+          ].map((tf) => (
+            <button
+              key={tf.key}
+              type="button"
+              onClick={() => setTimeframe(tf.key)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border-0 cursor-pointer ${
+                timeframe === tf.key
+                  ? (theme === 'dark' ? 'bg-[#FF7E67] text-white shadow-lg' : 'bg-white text-slate-800 shadow')
+                  : (theme === 'dark' ? 'text-slate-400 hover:text-slate-200 hover:bg-[#24243E]' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-300')
+              }`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Row 1: MoM Burn Rate (Full Width) */}
@@ -260,23 +278,29 @@ export const AnalyticsView = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between items-start gap-4">
             <div className="flex items-center gap-2">
               <Layers className="h-4 w-4 text-slate-400" />
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Monthly Burn Rate & Savings %</h3>
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
+                {flowFilter === 'INFLOW' ? 'Monthly Inflows' : flowFilter === 'TRANSFERS' ? 'Monthly Transfers' : 'Monthly Burn Rate & Savings %'}
+              </h3>
             </div>
+            {flowFilter === 'ALL' && (
             <button 
+              type="button"
               onClick={() => setShowSavingsLine(!showSavingsLine)}
               className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${showSavingsLine ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-500'}`}
             >
               {showSavingsLine ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
               {showSavingsLine ? 'Hide Savings % Line' : 'Show Savings % Line'}
             </button>
+            )}
           </div>
+          <p className="text-[11px] text-slate-500 font-medium">Click a bar segment to open that month in the ledger.</p>
           <div className="w-full h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={burnRateData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#1A1A2E' : '#E2E8F0'} />
                 <XAxis dataKey="name" stroke="#8d99ae" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={20} />
                 <YAxis yAxisId="left" stroke="#8d99ae" fontSize={10} tickLine={false} axisLine={false} tickFormatter={v => `₹${v>=1000 ? (v/1000)+'k' : v}`} />
-                {showSavingsLine && (
+                {showSavingsLine && flowFilter === 'ALL' && (
                   <YAxis 
                     yAxisId="right" 
                     orientation="right" 
@@ -296,27 +320,52 @@ export const AnalyticsView = () => {
                   ]}
                 />
                 <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+
+                {burnRateData.length === 0 && (
+                  <text x="50%" y="50%" textAnchor="middle" fill="#8d99ae" fontSize="12">
+                    No transactions in this view
+                  </text>
+                )}
                 
-                {topCategoryKeys.map((cat, idx) => (
+                {flowFilter !== 'INFLOW' && topCategoryKeys.map((cat, idx) => (
                   <Bar 
                     key={cat} 
                     yAxisId="left" 
                     dataKey={cat} 
                     stackId="a" 
                     fill={STACK_COLORS[idx % STACK_COLORS.length]} 
-                    barSize={24} 
+                    barSize={24}
+                    cursor="pointer"
+                    onClick={(data) => goToLedger({ month: payloadRow(data).yearMonth, category: cat })}
                   />
                 ))}
                 
-                <Bar 
-                  yAxisId="left" 
-                  dataKey="Other" 
-                  stackId="a" 
-                  fill={theme === 'dark' ? '#24243E' : '#CBD5E1'} 
-                  radius={[4, 4, 0, 0]} 
-                />
+                {flowFilter !== 'INFLOW' && (
+                  <Bar 
+                    yAxisId="left" 
+                    dataKey="Other" 
+                    stackId="a" 
+                    fill={theme === 'dark' ? '#24243E' : '#CBD5E1'} 
+                    radius={[4, 4, 0, 0]}
+                    cursor="pointer"
+                    onClick={(data) => goToLedger({ month: payloadRow(data).yearMonth })}
+                  />
+                )}
 
-                {showSavingsLine && (
+                {(flowFilter === 'INFLOW' || flowFilter === 'ALL') && (
+                  <Bar
+                    yAxisId="left"
+                    dataKey="Income"
+                    stackId={flowFilter === 'INFLOW' ? 'a' : 'income'}
+                    fill="#10b981"
+                    barSize={flowFilter === 'INFLOW' ? 24 : 10}
+                    cursor="pointer"
+                    radius={[4, 4, 0, 0]}
+                    onClick={(data) => goToLedger({ month: payloadRow(data).yearMonth, flow: 'INFLOW' })}
+                  />
+                )}
+
+                {showSavingsLine && flowFilter === 'ALL' && (
                   <Line 
                     yAxisId="right" 
                     type="monotone" 
@@ -324,7 +373,8 @@ export const AnalyticsView = () => {
                     stroke="#10b981" 
                     strokeWidth={2.5} 
                     connectNulls={false}
-                    dot={{ r: 3, fill: '#10b981', strokeWidth: 0 }} 
+                    dot={{ r: 4, fill: '#10b981', strokeWidth: 0, cursor: 'pointer' }}
+                    activeDot={{ r: 6, onClick: (_e, dot) => goToLedger({ month: payloadRow(dot).yearMonth, flow: 'ALL' }) }}
                   />
                 )}
               </ComposedChart>
@@ -335,7 +385,10 @@ export const AnalyticsView = () => {
 
       {/* Row 2: Heatmap (Full Width) */}
       <div className="w-full overflow-hidden">
-        <CalendarHeatmap transactions={transactions} />
+        <CalendarHeatmap
+          transactions={filteredTxs}
+          onDayClick={(date) => goToLedger({ date, month: date.slice(0, 7), flow: flowFilter })}
+        />
       </div>
 
       {/* Row 3: Top Categories & Payment Rail Donut */}
@@ -357,13 +410,17 @@ export const AnalyticsView = () => {
                 <Tooltip 
                   cursor={{fill: theme === 'dark' ? '#24243E' : '#E2E8F0'}}
                   contentStyle={{ backgroundColor: theme==='dark'?'#0F0F1A':'#FFF', borderColor: theme==='dark'?'#24243E':'#A3B1C6', borderRadius: '12px', color: theme==='dark'?'#EAEAEA':'#333' }}
-                  formatter={(val) => [`₹${Math.round(val).toLocaleString()}`, 'Spend']}
+                  formatter={(val) => [`₹${Math.round(val).toLocaleString()}`, flowFilter === 'INFLOW' ? 'Inflow' : 'Volume']}
                 />
                 <Bar 
                   dataKey="Spend" 
                   radius={[0, 4, 4, 0]} 
                   barSize={20}
-                  onClick={(data) => setActiveCategory(data.name)}
+                  cursor="pointer"
+                  onClick={(data) => {
+                    const name = data?.name || data?.payload?.name;
+                    setActiveCategory(name);
+                  }}
                   className="cursor-pointer hover:opacity-80 transition-opacity"
                 >
                   {categoryData.map((entry, index) => (
@@ -391,6 +448,11 @@ export const AnalyticsView = () => {
                   paddingAngle={5}
                   dataKey="value"
                   stroke="none"
+                  cursor="pointer"
+                  onClick={(data) => {
+                    const rail = data?.rail || data?.payload?.rail;
+                    if (rail) goToLedger({ rail, flow: flowFilter });
+                  }}
                 >
                   {paymentRailData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -409,7 +471,10 @@ export const AnalyticsView = () => {
 
       {/* Row 4: KPI Cards (Watchdog, Velocity) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <RecurringBillsWatchdog transactions={transactions} />
+        <RecurringBillsWatchdog
+          transactions={transactions}
+          onSelectMerchant={(merchant) => goToLedger({ search: merchant, flow: 'OUTFLOW' })}
+        />
 
         <div className={`p-6 rounded-2xl flex flex-col justify-center gap-2 border-0 ${style('neu-flat-dark', 'neu-flat-light')}`}>
           <div className="flex items-center gap-2 mb-2">
@@ -434,8 +499,12 @@ export const AnalyticsView = () => {
       {activeCategory && (
         <AnalyticsDrilldownModal 
           category={activeCategory} 
-          transactions={transactions} 
-          onClose={() => setActiveCategory(null)} 
+          transactions={filteredTxs} 
+          onClose={() => setActiveCategory(null)}
+          onOpenInLedger={() => {
+            goToLedger({ category: activeCategory, flow: flowFilter });
+            setActiveCategory(null);
+          }}
         />
       )}
     </div>

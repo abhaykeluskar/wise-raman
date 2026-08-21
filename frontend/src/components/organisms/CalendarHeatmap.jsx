@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { Calendar as CalendarIcon } from 'lucide-react';
+import { toLocalDateKey } from '../../utils/formatters';
 
-export const CalendarHeatmap = ({ transactions }) => {
+export const CalendarHeatmap = ({ transactions, onDayClick }) => {
   const { theme, style } = useTheme();
 
   const { heatmapData, maxValue } = useMemo(() => {
@@ -17,7 +18,7 @@ export const CalendarHeatmap = ({ transactions }) => {
     const dataMap = new Map();
     // Initialize 365 days with 0
     for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateKey(d);
       dataMap.set(dateStr, 0);
     }
 
@@ -26,7 +27,7 @@ export const CalendarHeatmap = ({ transactions }) => {
     transactions.forEach(tx => {
       const amt = parseFloat(tx.amount);
       if (amt < 0 && !tx.is_excluded_from_spending) {
-        const txDateStr = tx.date; 
+        const txDateStr = toLocalDateKey(tx.date);
         if (dataMap.has(txDateStr)) {
           const newTotal = dataMap.get(txDateStr) + Math.abs(amt);
           dataMap.set(txDateStr, newTotal);
@@ -39,7 +40,6 @@ export const CalendarHeatmap = ({ transactions }) => {
     return { heatmapData: dataArray, maxValue: maxSpend > 0 ? maxSpend : 1 };
   }, [transactions]);
 
-  // Color logic matching Github intensity
   const getColor = (val) => {
     if (val === 0) return theme === 'dark' ? 'bg-[#1e1e2d]' : 'bg-slate-100';
     const ratio = val / maxValue;
@@ -53,6 +53,13 @@ export const CalendarHeatmap = ({ transactions }) => {
   // Group into weeks for rendering columns
   const weeks = [];
   let currentWeek = [];
+  if (heatmapData.length > 0) {
+    const first = new Date(`${heatmapData[0].date}T12:00:00`);
+    const pad = first.getDay();
+    for (let i = 0; i < pad; i += 1) {
+      currentWeek.push({ date: `pad-${i}`, val: null });
+    }
+  }
   heatmapData.forEach((day, idx) => {
     currentWeek.push(day);
     if (currentWeek.length === 7 || idx === heatmapData.length - 1) {
@@ -74,8 +81,13 @@ export const CalendarHeatmap = ({ transactions }) => {
               {week.map((day, dIdx) => (
                 <div 
                   key={day.date} 
-                  className={`w-3 h-3 rounded-sm ${getColor(day.val)} transition-colors duration-200 hover:opacity-80`}
-                  title={`${day.date}: ₹${day.val.toFixed(0)}`}
+                  role={day.val == null || !onDayClick ? undefined : 'button'}
+                  onClick={() => {
+                    if (day.val == null || !onDayClick) return;
+                    onDayClick(day.date);
+                  }}
+                  className={`w-3 h-3 rounded-sm ${day.val == null ? 'bg-transparent' : getColor(day.val)} transition-colors duration-200 hover:opacity-80 ${onDayClick && day.val != null ? 'cursor-pointer' : ''}`}
+                  title={day.val == null ? undefined : `${day.date}: ₹${day.val.toFixed(0)}${onDayClick ? ' — click to open ledger' : ''}`}
                 />
               ))}
             </div>

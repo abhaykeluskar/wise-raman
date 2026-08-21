@@ -139,13 +139,142 @@ def parse_date_string(date_str):
                 continue
     return None
 
+TABULAR_EXTS = {"csv", "xls", "xlsx"}
+
 def detect_bank_and_format(filename, first_few_lines):
-    combined_text = "\n".join(first_few_lines).lower()
+    combined_text = f"{filename or ''}\n" + "\n".join(first_few_lines or [])
+    combined_text = combined_text.lower()
     if "hdfc" in combined_text: return "HDFC"
     elif "state bank of india" in combined_text or "sbi" in combined_text: return "SBI"
     elif "axis" in combined_text: return "AXIS"
     elif "federal" in combined_text or "onecard" in combined_text: return "FEDERAL"
     return "GENERIC"
+
+def _norm_col(name) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(name or "").strip().lower()).strip()
+
+def _pick_column(columns, keywords):
+    for col in columns:
+        n = _norm_col(col)
+        if any(k == n or k in n for k in keywords):
+            return col
+    return None
+
+def _looks_like_txn_table(df) -> bool:
+    if df is None or df.empty or len(df.columns) < 2:
+        return False
+    cols = [_norm_col(c) for c in df.columns]
+    has_date = any("date" in c or c in ("txn dt", "tran date") for c in cols)
+    has_amt = any(any(k in c for k in ("amount", "debit", "credit", "withdrawal", "deposit", "narration", "particular")) for c in cols)
+    return has_date and has_amt
+
+def read_tabular_dataframe(file_bytes: bytes, ext: str):
+    ext = (ext or "").lower().lstrip(".")
+    if ext in ("xlsx", "xls"):
+        engine = "openpyxl" if ext == "xlsx" else "xlrd"
+        for header in range(0, 18):
+            try:
+                df = pd.read_excel(io.BytesIO(file_bytes), engine=engine, header=header)
+                df = df.dropna(how="all").dropna(axis=1, how="all")
+                if _looks_like_txn_table(df):
+                    return df
+            except Exception:
+                continue
+        return None
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        for skip in range(0, 22):
+            try:
+                df = pd.read_csv(io.BytesIO(file_bytes), encoding=enc, skiprows=skip)
+                df = df.dropna(how="all").dropna(axis=1, how="all")
+                if _looks_like_txn_table(df):
+                    return df
+            except Exception:
+                continue
+    return None
+
+def parse_tabular_statement(file_bytes, ext, account_type="Savings"):
+    """Parse Indian bank CSV / Excel exports (savings and credit cards)."""
+    df = read_tabular_dataframe(file_bytes, ext)
+    if df is None:
+        return []
+
+    cols = list(df.columns)
+    date_col = _pick_column(cols, ["transaction date", "txn date", "tran date", "value date", "posting date", "date"])
+    desc_col = _pick_column(cols, ["narration", "particulars", "description", "details", "remarks", "merchant", "transaction details", "narration/description"])
+    debit_col = _pick_column(cols, ["withdrawal amt", "withdrawal", "debit amount", "debit amt", "withdrawals", "debit"])
+    credit_col = _pick_column(cols, ["deposit amt", "deposit", "credit amount", "credit amt", "deposits", "credit"])
+    amount_col = _pick_column(cols, ["amount (inr)", "transaction amount", "txn amount", "amount"])
+    type_col = _pick_column(cols, ["dr cr", "debit credit", "type", "txn type", "transaction type", "cr/dr"])
+    bal_col = _pick_column(cols, ["closing balance", "running balance", "balance"])
+
+    if date_col is None:
+        return []
+
+    is_cc = account_type == "Credit Card"
+    transactions = []
+    opening_balance = None
+    prev_bal = None
+
+    for _, row in df.iterrows():
+        parsed_date = parse_date_string(row.get(date_col))
+        if not parsed_date:
+            continue
+
+        desc = ""
+        if desc_col is not None and not pd.isna(row.get(desc_col)):
+            desc = str(row.get(desc_col)).strip()
+        if not desc or desc.lower() == "nan":
+            desc = "Transaction"
+
+        debit = clean_amount(row.get(debit_col)) if debit_col is not None else None
+        credit = clean_amount(row.get(credit_col)) if credit_col is not None else None
+        raw_amt = clean_amount(row.get(amount_col)) if amount_col is not None else None
+        indicator = str(row.get(type_col) or "").strip().upper() if type_col is not None else ""
+        bal = clean_amount(row.get(bal_col)) if bal_col is not None else None
+
+        amt = None
+        if debit not in (None, Decimal("0.00")) and credit in (None, Decimal("0.00")):
+            amt = -abs(debit)
+        elif credit not in (None, Decimal("0.00")) and debit in (None, Decimal("0.00")):
+            amt = abs(credit)
+        elif debit not in (None, Decimal("0.00")) and credit not in (None, Decimal("0.00")):
+            amt = abs(credit) - abs(debit)
+        elif raw_amt is not None:
+            amt = raw_amt
+            if indicator in ("DR", "DEBIT", "D"):
+                amt = -abs(amt)
+            elif indicator in ("CR", "CREDIT", "C"):
+                amt = abs(amt)
+            elif is_cc and amt > 0 and not any(k in desc.lower() for k in ("payment", "refund", "reversal", "cashback", "repayment")):
+                amt = -abs(amt)
+        elif prev_bal is not None and bal is not None:
+            amt = bal - prev_bal if not is_cc else prev_bal - bal
+
+        if amt is None or amt == Decimal("0.00"):
+            continue
+
+        if opening_balance is None and bal is not None:
+            opening_balance = bal - amt if not is_cc else bal + amt
+        prev_bal = bal if bal is not None else prev_bal
+
+        transactions.append({
+            "date": parsed_date,
+            "amount": amt,
+            "description": desc,
+            "raw_text": " | ".join(str(v) for v in row.tolist() if not pd.isna(v)),
+            "balance": bal,
+        })
+
+    closing_balance = prev_bal
+    return {
+        "transactions": transactions,
+        "opening_balance": opening_balance,
+        "closing_balance": closing_balance,
+        "statement_summary": {
+            "opening_balance": opening_balance,
+            "total_amount_due": closing_balance if is_cc else closing_balance,
+        },
+    }
 
 def parse_sbi_statement(file_bytes, ext, account_type, password=None):
     transactions = []
@@ -153,6 +282,10 @@ def parse_sbi_statement(file_bytes, ext, account_type, password=None):
     is_savings = account_type in ["Savings", "Current"]
     opening_balance = None
     closing_balance = None
+    ext = (ext or "").lower()
+
+    if ext in TABULAR_EXTS:
+        return parse_tabular_statement(file_bytes, ext, account_type)
     
     if ext == "pdf":
         if is_savings:
@@ -239,6 +372,10 @@ def parse_hdfc_statement(file_bytes, ext, account_type, password=None):
     is_savings = account_type in ["Savings", "Current"]
     opening_balance = None
     closing_balance = None
+    ext = (ext or "").lower()
+
+    if ext in TABULAR_EXTS:
+        return parse_tabular_statement(file_bytes, ext, account_type)
     
     if ext == "pdf":
         if is_savings:
@@ -330,7 +467,46 @@ def parse_hdfc_statement(file_bytes, ext, account_type, password=None):
 
 def parse_federal_statement(file_bytes, ext, account_type, password=None):
     transactions = []
+    ext = (ext or "").lower()
+    if ext in TABULAR_EXTS:
+        return parse_tabular_statement(file_bytes, ext, account_type)
     if ext == "pdf":
+        if account_type in ["Savings", "Current"]:
+            tabular_like = []
+            sav_pattern = re.compile(
+                r"^(\d{2}[-/]\d{2}[-/]\d{2,4})\s+(.+?)\s+([0-9,]+\.\d{2}|-)\s+([0-9,]+\.\d{2}|-)\s+([0-9,]+\.\d{2})$"
+            )
+            with pdfplumber.open(io.BytesIO(file_bytes), password=password) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text() or ""
+                    for line in text.splitlines():
+                        m = sav_pattern.match(line.strip())
+                        if not m:
+                            continue
+                        d_str, desc, wdl_str, dep_str, bal_str = m.groups()
+                        parsed_date = parse_date_string(d_str)
+                        if not parsed_date:
+                            continue
+                        wdl = Decimal(wdl_str.replace(",", "")) if wdl_str != "-" else Decimal("0.00")
+                        dep = Decimal(dep_str.replace(",", "")) if dep_str != "-" else Decimal("0.00")
+                        amt = dep if dep > 0 else -wdl
+                        tabular_like.append({
+                            "date": parsed_date,
+                            "amount": amt,
+                            "description": desc.strip(),
+                            "raw_text": line.strip(),
+                            "balance": Decimal(bal_str.replace(",", "")),
+                        })
+            if tabular_like:
+                return {
+                    "transactions": tabular_like,
+                    "opening_balance": tabular_like[0]["balance"] - tabular_like[0]["amount"],
+                    "closing_balance": tabular_like[-1]["balance"],
+                    "statement_summary": {
+                        "opening_balance": tabular_like[0]["balance"] - tabular_like[0]["amount"],
+                        "total_amount_due": tabular_like[-1]["balance"],
+                    },
+                }
         fed_pattern = re.compile(r"^(\d{2}\s+[A-Za-z]{3})\s+(.+?)\s+([A-Z_]+)\s+([0-9,]+(?:\.\d{1,2})?)\s+([0-9,]+(?:\.\d{1,2})?)$", re.IGNORECASE)
         fed_repayment_pattern = re.compile(r"^(\d{2}\s+[A-Za-z]{3})\s+(.+?)\s+([0-9,]+(?:\.\d{1,2})?)$", re.IGNORECASE)
         
@@ -375,8 +551,51 @@ def parse_federal_statement(file_bytes, ext, account_type, password=None):
 
 def parse_axis_statement(file_bytes, ext, account_type, password=None):
     transactions = []
+    ext = (ext or "").lower()
+    if ext in TABULAR_EXTS:
+        return parse_tabular_statement(file_bytes, ext, account_type)
     if ext == "pdf":
         pages = extract_pdf_pages_text(file_bytes, password=password)
+        if account_type in ["Savings", "Current"]:
+            sav_pattern = re.compile(
+                r"^(\d{2}[-/]\d{2}[-/]\d{2,4})\s+(.+?)\s+([0-9,]+\.\d{2}|-)\s+([0-9,]+\.\d{2}|-)\s+([0-9,]+\.\d{2})$"
+            )
+            opening_balance = None
+            for text in pages:
+                if not text:
+                    continue
+                for line in text.splitlines():
+                    m = sav_pattern.match(line.strip())
+                    if not m:
+                        continue
+                    d_str, desc, wdl_str, dep_str, bal_str = m.groups()
+                    parsed_date = parse_date_string(d_str)
+                    if not parsed_date:
+                        continue
+                    wdl = Decimal(wdl_str.replace(",", "")) if wdl_str != "-" else Decimal("0.00")
+                    dep = Decimal(dep_str.replace(",", "")) if dep_str != "-" else Decimal("0.00")
+                    bal = Decimal(bal_str.replace(",", ""))
+                    amt = dep if dep > 0 else -wdl
+                    if opening_balance is None:
+                        opening_balance = bal - amt
+                    transactions.append({
+                        "date": parsed_date,
+                        "amount": amt,
+                        "description": desc.strip(),
+                        "raw_text": line.strip(),
+                        "balance": bal,
+                    })
+            if transactions:
+                return {
+                    "transactions": transactions,
+                    "opening_balance": opening_balance,
+                    "closing_balance": transactions[-1]["balance"],
+                    "statement_summary": {
+                        "opening_balance": opening_balance,
+                        "total_amount_due": transactions[-1]["balance"],
+                    },
+                }
+
         axis_pattern = re.compile(
             r"^(\d{1,2}\s+[A-Za-z]{3}\s*['’]?\s*\d{2,4}|\d{2}[-/]\d{2}[-/]\d{2,4})\s+(.+?)\s+(?:[₹%¥RsINR\.\s]+)?([0-9,]+(?:\.\d{1,2})?)\s*(Credit|Debit|Cr|Dr)?\s*$", 
             re.IGNORECASE
@@ -431,6 +650,9 @@ def parse_axis_statement(file_bytes, ext, account_type, password=None):
     return transactions
 
 def parse_generic_statement(file_bytes, ext, account_type, password=None):
+    ext = (ext or "").lower()
+    if ext in TABULAR_EXTS:
+        return parse_tabular_statement(file_bytes, ext, account_type)
     return []
 
 from app.telemetry import telemetry
@@ -468,9 +690,11 @@ def extract_and_categorize_with_light_llm(
         "stream": False,
         "options": {
             "temperature": settings.LLM_TEMPERATURE,
-            "num_predict": settings.LLM_NUM_CTX,
-            "num_ctx": settings.LLM_NUM_CTX
-        }
+            "num_predict": 1024,
+            "num_ctx": settings.LLM_NUM_CTX,
+            "num_gpu": -1,
+        },
+        "keep_alive": "30m",
     }
 
     try:
@@ -505,6 +729,9 @@ def process_statement_with_lightweight_llm(
     if ext == 'pdf':
         pages = extract_pdf_pages_text(file_bytes, password=password)
         full_text = "\n".join(pages)
+    elif ext in TABULAR_EXTS:
+        df = read_tabular_dataframe(file_bytes, ext)
+        full_text = df.to_csv(index=False) if df is not None else ""
     else:
         full_text = file_bytes.decode("utf-8", errors="ignore")
 
@@ -599,6 +826,9 @@ def extract_statement_metadata(
         except Exception as e:
             logger.warning(f"Could not extract text for statement metadata: {e}")
             return {}
+    elif ext in TABULAR_EXTS:
+        df = read_tabular_dataframe(file_bytes, ext)
+        full_text = df.to_csv(index=False) if df is not None else ""
     else:
         full_text = file_bytes.decode('utf-8', errors='ignore')
 
@@ -805,7 +1035,15 @@ def parse_statement(
             sample_text = pages[0] if pages else ""
             bank = detect_bank_and_format(filename, sample_text.splitlines()[:20])
         else:
-            bank = detect_bank_and_format(filename, [])
+            sample_lines = []
+            if ext in TABULAR_EXTS:
+                df = read_tabular_dataframe(file_bytes, ext)
+                if df is not None:
+                    sample_lines = [str(c) for c in df.columns]
+                    sample_lines.extend(df.head(4).astype(str).agg(" ".join, axis=1).tolist())
+            if not sample_lines:
+                sample_lines = file_bytes[:4000].decode("utf-8", errors="ignore").splitlines()[:20]
+            bank = detect_bank_and_format(filename, sample_lines)
 
     # Extract Statement Summary Metadata (Opening Balance, Total Due, Limit, Due Date)
     statement_summary = extract_statement_metadata(file_bytes, ext, bank_name=bank or "", password=password)
@@ -844,7 +1082,20 @@ def parse_statement(
             if v is not None and statement_summary.get(k) is None:
                 statement_summary[k] = v
     else:
-        transactions = raw_res
+        transactions = raw_res or []
+
+    if (not transactions) and ext in TABULAR_EXTS:
+        fallback = parse_tabular_statement(file_bytes, ext, account_type)
+        if isinstance(fallback, dict):
+            transactions = fallback.get("transactions", [])
+            parsed_summary = fallback.get("statement_summary") or {}
+            for k, v in parsed_summary.items():
+                if v is not None and statement_summary.get(k) is None:
+                    statement_summary[k] = v
+            if fallback.get("opening_balance") is not None:
+                statement_summary["opening_balance"] = statement_summary.get("opening_balance") or fallback.get("opening_balance")
+        elif fallback:
+            transactions = fallback
         
     return {
         "transactions": transactions,
