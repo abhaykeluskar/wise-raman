@@ -471,7 +471,13 @@ def upload_bank_statement(
             p_end = statement_summary.get("period_end_date") or stmt_dt
 
             prev_dues_val = Decimal(str(opening_balance)) if opening_balance is not None else Decimal("0.00")
-            total_due_val = Decimal(str(closing_balance)) if closing_balance is not None else sum(abs(Decimal(str(pt["amount"]))) for pt in parsed_txs if Decimal(str(pt["amount"])) < 0)
+            if closing_balance is not None:
+                total_due_val = Decimal(str(closing_balance))
+            else:
+                cycle_net = sum(Decimal(str(pt["amount"])) for pt in parsed_txs)
+                # TAD = previous dues − Σ(credits − debits) when spends are stored negative
+                reconstructed = prev_dues_val - cycle_net
+                total_due_val = reconstructed if reconstructed > 0 else Decimal("0.00")
             min_due_val = Decimal(str(statement_summary.get("minimum_amount_due") or 0))
 
             statement_record = CreditCardStatement(

@@ -7,7 +7,7 @@ import { NetworkLogo } from '../atoms/NetworkLogo';
 import { Button } from '../atoms/Button';
 import { StatDeckCard } from '../molecules/StatDeckCard';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { getNextDueDate } from '../../utils/analytics';
+import { getNextDueDate, cardTotalAmountDue } from '../../utils/analytics';
 import { EditCardModal } from '../organisms/EditCardModal';
 import { 
   CreditCard as CreditCardIcon, 
@@ -99,49 +99,25 @@ export const CardPortfolioView = ({ initialCardId }) => {
       allCardTxs = allCardTxs.filter(t => t.date && t.date.startsWith(selectedMonth));
     }
     
-    // Purchases & debits
     const cardTxs = allCardTxs.filter(t => parseFloat(t.amount) < 0 && !t.is_excluded_from_spending);
     const totalSpends = cardTxs.reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
-    const totalDebits = allCardTxs.filter(t => parseFloat(t.amount) < 0).reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
 
-    // Identify Bill Payments vs Refunds & Cashbacks
-    const isBillPaymentTx = (t) => {
-      const desc = (t.description || '').toUpperCase();
-      return t.transaction_type === 'CC_PAYMENT_RECEIVED' || 
-        desc.includes('PAYMENT') || 
-        desc.includes('MB/IB') || 
-        desc.includes('AUTODEBIT') || 
-        desc.includes('BILLDESK') || 
-        desc.includes('NEFT') || 
-        desc.includes('IMPS');
-    };
-
-    const credits = allCardTxs.filter(t => parseFloat(t.amount) > 0);
-    const refundsAndCashbacks = credits
-      .filter(t => !isBillPaymentTx(t))
-      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
-
-    // 1. Calculated Total Payment Due
-    const computedPayment = Math.max(0, totalDebits - refundsAndCashbacks);
-
-    // 2. Check for latest persisted statement metadata from official PDF
     let stmtsForCard = (statements || []).filter(s => String(s.account_id) === String(activeCard.account_id));
     if (selectedMonth !== 'ALL') {
       stmtsForCard = stmtsForCard.filter(s => s.statement_date && s.statement_date.startsWith(selectedMonth));
     }
-    const latestStmt = stmtsForCard[0]; // Assuming ordered by date or we just take the first matching
+    stmtsForCard.sort((a, b) => String(b.statement_date || '').localeCompare(String(a.statement_date || '')));
+    const dueInfo = cardTotalAmountDue({
+      transactions: allCardTxs,
+      statements: stmtsForCard,
+      accountId: activeCard.account_id
+    });
+    const latestStmt = dueInfo.statement;
 
-    let finalPayment = computedPayment;
-    let openBal = 0;
-    let dueTxt = '';
-    let isVerified = false;
-
-    if (latestStmt && parseFloat(latestStmt.total_amount_due) > 0) {
-      finalPayment = parseFloat(latestStmt.total_amount_due);
-      openBal = parseFloat(latestStmt.previous_dues) || 0;
-      dueTxt = formatDate(latestStmt.due_date, 'short');
-      isVerified = true;
-    }
+    const finalPayment = dueInfo.amount;
+    const openBal = latestStmt ? parseFloat(latestStmt.previous_dues) || 0 : 0;
+    const dueTxt = latestStmt?.due_date ? formatDate(latestStmt.due_date, 'short') : '';
+    const isVerified = dueInfo.source === 'statement';
 
     const limit = activeCard.monthly_cap ? parseFloat(activeCard.monthly_cap) : 100000;
     const avail = Math.max(0, limit - finalPayment);
@@ -487,7 +463,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
             <StatDeckCard
               title="Credit Utilization"
               value={`${utilizationPercent.toFixed(1)}%`}
-              sublabel={utilizationPercent <= 30 ? "✓ Healthy (<30% CIBIL guideline)" : "⚠ Above 30% recommended buffer"}
+              sublabel={utilizationPercent <= 30 ? "✓ Under 30% (bureau rule of thumb, not an RBI cap)" : "⚠ Above 30% recommended buffer"}
               valueColor={utilizationPercent <= 30 ? "text-emerald-400" : "text-amber-400"}
               icon={Gauge}
             />

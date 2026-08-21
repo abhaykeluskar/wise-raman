@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
+import { isInternalFlow } from '../../utils/analytics';
 import { ShieldAlert, ArrowRight } from 'lucide-react';
 
 export const RecurringBillsWatchdog = ({ transactions, onSelectMerchant }) => {
@@ -15,6 +16,7 @@ export const RecurringBillsWatchdog = ({ transactions, onSelectMerchant }) => {
     const recentOutflows = transactions.filter(t => {
       if (parseFloat(t.amount) >= 0) return false;
       if (t.is_excluded_from_spending) return false;
+      if (isInternalFlow(t)) return false;
       return new Date(t.date) >= cutoff;
     });
 

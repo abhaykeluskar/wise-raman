@@ -55,16 +55,61 @@ const startOfDay = (d) => {
 const formatInDate = (d) =>
   d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
-/** Estimated payment due: statement day + 20 calendar days (handles 28–31 day months). */
+const clampStatementDay = (year, monthIndex, stmtDay) => {
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  return Math.min(Math.max(1, stmtDay || 1), lastDay);
+};
+
+/** Paise rounding (banks/RBI post in ₹ with 2 decimals, half-up). */
+export const roundPaise = (n) => {
+  const x = typeof n === 'number' ? n : parseFloat(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round((x + Number.EPSILON) * 100) / 100;
+};
+
+/**
+ * Ledger-implied card outstanding.
+ * App convention: purchases/fees < 0, payments/refunds/cashback > 0.
+ * TAD ≈ max(0, −Σ amounts), matching RBI TAD (net of credits in the posted ledger).
+ */
+export const cardLedgerOutstanding = (transactions = []) => {
+  const net = transactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+  return Math.max(0, roundPaise(-net));
+};
+
+export const latestCardStatement = (statements = [], accountId) => {
+  const rows = statements.filter((s) => String(s.account_id) === String(accountId));
+  rows.sort((a, b) => String(b.statement_date || '').localeCompare(String(a.statement_date || '')));
+  return rows[0] || null;
+};
+
+/** Prefer official statement TAD; else reconstruct from the card ledger. */
+export const cardTotalAmountDue = ({ transactions = [], statements = [], accountId } = {}) => {
+  const stmt = latestCardStatement(statements, accountId);
+  const tad = stmt != null ? parseFloat(stmt.total_amount_due) : NaN;
+  if (Number.isFinite(tad) && tad >= 0) {
+    return { amount: roundPaise(tad), source: 'statement', statement: stmt };
+  }
+  return { amount: cardLedgerOutstanding(transactions), source: 'ledger', statement: stmt };
+};
+
+/**
+ * Estimated payment due: statement day + 20 calendar days.
+ * RBI requires at least a fortnight (14 days) before interest; issuers commonly use ~15–20 days
+ * (RBI Master Direction illustration: 30 Oct statement → 19 Nov due). This is not issuer-specific.
+ */
 export const getNextDueDate = (card, fromDate = new Date()) => {
   const today = startOfDay(fromDate);
-  const stmtDay = parseInt(card?.statement_date, 10) || 1;
+  const rawStmtDay = parseInt(card?.statement_date, 10) || 1;
+  const stmtDay = clampStatementDay(today.getFullYear(), today.getMonth(), rawStmtDay);
   let stmtDate = startOfDay(new Date(today.getFullYear(), today.getMonth(), stmtDay));
   let dueDate = startOfDay(new Date(stmtDate));
   dueDate.setDate(dueDate.getDate() + 20);
 
   if (dueDate < today) {
-    stmtDate = startOfDay(new Date(today.getFullYear(), today.getMonth() + 1, stmtDay));
+    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const nextStmtDay = clampStatementDay(nextMonth.getFullYear(), nextMonth.getMonth(), rawStmtDay);
+    stmtDate = startOfDay(new Date(nextMonth.getFullYear(), nextMonth.getMonth(), nextStmtDay));
     dueDate = startOfDay(new Date(stmtDate));
     dueDate.setDate(dueDate.getDate() + 20);
   }
@@ -91,6 +136,23 @@ export const calculateNextCardDue = (cards = []) => {
   return nearest;
 };
 
+const TRANSFER_TYPES = new Set([
+  'TRANSFER_INTERNAL',
+  'CC_BILL_PAYMENT',
+  'CC_PAYMENT_RECEIVED'
+]);
+
+const TRANSFER_CATEGORIES = new Set(['Transfer', 'Repayments']);
+
+const TRANSFER_DESC = /NEFT|RTGS|IMPS|INTERNAL FUND|OWN ACCOUNT|SELF TRANSFER|TO SELF|CC PAYMENT|CREDIT CARD|BILLDESK|MB\/IB PAYMENT|AUTODEBIT|AUTO DEBIT/;
+
+export const isInternalFlow = (tx) => {
+  if (!tx) return false;
+  if (TRANSFER_TYPES.has(tx.transaction_type)) return true;
+  if (TRANSFER_CATEGORIES.has(tx.category)) return true;
+  return TRANSFER_DESC.test((tx.description || '').toUpperCase());
+};
+
 export const calculateVelocity = (transactions = []) => {
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -101,6 +163,7 @@ export const calculateVelocity = (transactions = []) => {
   // Filter current month valid spending transactions
   const currentMonthSpends = transactions.filter(t => {
     if (t.is_excluded_from_spending || parseFloat(t.amount) >= 0) return false;
+    if (isInternalFlow(t)) return false;
     if (!t.date) return false;
     const d = new Date(t.date);
     return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
@@ -115,6 +178,7 @@ export const calculateVelocity = (transactions = []) => {
   const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
   const prevMonthSpends = transactions.filter(t => {
     if (t.is_excluded_from_spending || parseFloat(t.amount) >= 0) return false;
+    if (isInternalFlow(t)) return false;
     if (!t.date) return false;
     const d = new Date(t.date);
     return d.getFullYear() === prevYear && d.getMonth() === prevMonth;
@@ -134,23 +198,6 @@ export const calculateVelocity = (transactions = []) => {
     currentDay,
     daysInCurrentMonth
   };
-};
-
-const TRANSFER_TYPES = new Set([
-  'TRANSFER_INTERNAL',
-  'CC_BILL_PAYMENT',
-  'CC_PAYMENT_RECEIVED'
-]);
-
-const TRANSFER_CATEGORIES = new Set(['Transfer', 'Repayments']);
-
-const TRANSFER_DESC = /NEFT|RTGS|IMPS|INTERNAL FUND|OWN ACCOUNT|SELF TRANSFER|TO SELF|CC PAYMENT|CREDIT CARD|BILLDESK|MB\/IB PAYMENT|AUTODEBIT|AUTO DEBIT/;
-
-export const isInternalFlow = (tx) => {
-  if (!tx) return false;
-  if (TRANSFER_TYPES.has(tx.transaction_type)) return true;
-  if (TRANSFER_CATEGORIES.has(tx.category)) return true;
-  return TRANSFER_DESC.test((tx.description || '').toUpperCase());
 };
 
 export const matchesPaymentRail = (tx, accounts, rail) => {
