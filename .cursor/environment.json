@@ -1,0 +1,21 @@
+{
+  "name": "WiseRaman",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "user": "ubuntu",
+  "install": ".cursor/scripts/cloud-agent-install.sh",
+  "start": ".cursor/scripts/cloud-agent-start.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "cd backend && DATABASE_URL=postgresql://postgres:local_secret_password@localhost:5432/finance_db OLLAMA_URL=http://localhost:11434 LLM_MODEL=qwen2.5:3b EMBEDDING_MODEL=nomic-embed-text .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+    },
+    {
+      "name": "frontend",
+      "command": "cd frontend && npm run dev"
+    }
+  ],
+  "ports": [5173, 8000]
+}
