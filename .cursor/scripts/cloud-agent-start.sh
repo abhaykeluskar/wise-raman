@@ -28,6 +28,7 @@ if ! grep -q "backend" /etc/hosts 2>/dev/null; then
 fi
 
 echo "==> Starting infrastructure services (PostgreSQL + Ollama)"
+docker compose -f "$REPO_ROOT/.cursor/docker-compose.infra.yml" pull
 docker compose -f "$REPO_ROOT/.cursor/docker-compose.infra.yml" up -d
 
 echo "==> Waiting for PostgreSQL"
