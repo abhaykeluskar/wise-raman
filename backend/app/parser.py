@@ -1103,3 +1103,63 @@ def parse_statement(
         "opening_balance": statement_summary.get("opening_balance"),
         "closing_balance": statement_summary.get("total_amount_due")
     }
+
+def parse_payslip(file_bytes, password: Optional[str] = None):
+    """Parse Payslip PDF using Ollama LLM."""
+    pages = extract_pdf_pages_text(file_bytes, password=password)
+    text = "\n".join(pages)
+    
+    prompt = f"""
+You are an expert payslip parser. Extract the following information from this Indian payslip text and return it strictly as valid JSON.
+Do NOT include any markdown formatting, backticks, or other text outside the JSON object.
+
+Extract these fields:
+- employee_id (string or null)
+- employee_name (string or null)
+- company_name (string or null)
+- period_month (integer, 1-12 representing the month)
+- period_year (integer, e.g., 2025)
+- bank_account_no (string or null)
+- basic_salary (number, defaults to 0)
+- hra (number, defaults to 0)
+- special_allowance (number, defaults to 0)
+- other_earnings (number, defaults to 0)
+- gross_earnings (number)
+- provident_fund (number, defaults to 0)
+- professional_tax (number, defaults to 0)
+- income_tax_tds (number, defaults to 0)
+- other_deductions (number, defaults to 0)
+- gross_deductions (number)
+- net_pay (number)
+
+Text to parse:
+{text}
+"""
+    try:
+        response = requests.post(
+            f"{settings.OLLAMA_URL}/api/generate",
+            json={
+                "model": "qwen2.5:3b",
+                "prompt": prompt,
+                "stream": False,
+                "format": "json"
+            },
+            timeout=180
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        # Sometimes Ollama returns backticks even with format=json
+        resp_text = data["response"].strip()
+        if resp_text.startswith("```json"):
+            resp_text = resp_text[7:]
+        if resp_text.startswith("```"):
+            resp_text = resp_text[3:]
+        if resp_text.endswith("```"):
+            resp_text = resp_text[:-3]
+            
+        parsed_json = json.loads(resp_text)
+        return parsed_json
+    except Exception as e:
+        logger.error(f"Error parsing payslip via LLM: {str(e)}")
+        raise ValueError(f"Failed to parse payslip using LLM: {str(e)}")

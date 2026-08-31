@@ -125,3 +125,39 @@ class CreditCard(Base):
 
     account = relationship("Account")
     bank = relationship("Bank", back_populates="credit_cards")
+
+class Payslip(Base):
+    __tablename__ = "payslips"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    employee_id = Column(String(50), nullable=True)
+    employee_name = Column(String(100), nullable=True)
+    company_name = Column(String(100), nullable=True)
+    period_month = Column(Integer, nullable=False) # 1-12
+    period_year = Column(Integer, nullable=False)
+    bank_account_no = Column(String(32), nullable=True)
+
+    # Earnings
+    basic_salary = Column(Numeric(14, 2), nullable=False, default=0.00)
+    hra = Column(Numeric(14, 2), nullable=False, default=0.00)
+    special_allowance = Column(Numeric(14, 2), nullable=False, default=0.00)
+    other_earnings = Column(Numeric(14, 2), nullable=False, default=0.00)
+    gross_earnings = Column(Numeric(14, 2), nullable=False)
+
+    # Deductions
+    provident_fund = Column(Numeric(14, 2), nullable=False, default=0.00)
+    professional_tax = Column(Numeric(14, 2), nullable=False, default=0.00)
+    income_tax_tds = Column(Numeric(14, 2), nullable=False, default=0.00)
+    other_deductions = Column(Numeric(14, 2), nullable=False, default=0.00)
+    gross_deductions = Column(Numeric(14, 2), nullable=False)
+
+    net_pay = Column(Numeric(14, 2), nullable=False)
+    
+    # Linked bank account and transaction
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
+    transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    account = relationship("Account")
+    transaction = relationship("Transaction")

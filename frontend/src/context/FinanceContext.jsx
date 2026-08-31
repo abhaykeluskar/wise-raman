@@ -90,100 +90,110 @@ export const FinanceProvider = ({ children }) => {
     fetchData();
   }, [fetchData]);
 
-  // Non-blocking upload handler
-  const startStatementUpload = async ({ bankId, accountId, fileType, processingEngine, file, pdfPassword }) => {
-    if (!file || !accountId) return;
+  // Non-blocking upload handler for multiple files
+  const startDocumentUpload = async ({ documentType = 'STATEMENT', bankId, accountId, fileType, processingEngine, files, pdfPassword }) => {
+    if (!files || files.length === 0) return;
+    if (documentType === 'STATEMENT' && !accountId) return;
 
-    const isAi = processingEngine === "Local AI LLM (Fallback)";
+    const isAi = processingEngine === "Local AI LLM (Fallback)" || documentType === 'PAYSLIP';
     
-    // 1. Set initial upload state
+    // We will upload files sequentially to avoid overloading the backend LLM
+    let successCount = 0;
+    let failCount = 0;
+    let lastError = null;
+
     setActiveUpload({
       status: isAi ? 'processing_ai' : 'processing_algo',
-      phase: isAi 
-        ? '[AI] Initializing structured Qwen2.5:3b parser...' 
-        : 'Phase 1/3: Extracting PDF Text & Ruled Coordinates...',
-      progress: 15,
-      engine: processingEngine,
-      filename: file.name
+      phase: `Starting upload for ${files.length} document(s)...`,
+      progress: 5,
+      engine: isAi ? 'Local AI LLM' : processingEngine,
+      filename: files.length === 1 ? files[0].name : `${files.length} files selected`
     });
 
-    // 2. Simulated phase updates for UI smoothness while backend processes
-    let progressTimer;
-    if (!isAi) {
-      progressTimer = setInterval(() => {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const progressBase = Math.floor((i / files.length) * 100);
+      const progressNext = Math.floor(((i + 1) / files.length) * 100);
+
+      setActiveUpload(prev => ({
+        ...prev,
+        progress: progressBase + 5,
+        phase: `Processing file ${i + 1} of ${files.length}: ${file.name}...`,
+        filename: file.name
+      }));
+
+      // Simulate some progress for current file
+      const progressTimer = setInterval(() => {
         setActiveUpload(prev => {
           if (!prev || prev.status === 'success' || prev.status === 'error') return prev;
-          if (prev.progress < 50) {
-            return { ...prev, progress: 50, phase: 'Phase 2/3: Validating Completeness Proof (Opening vs Closing)...' };
-          } else if (prev.progress < 85) {
-            return { ...prev, progress: 85, phase: 'Phase 3/3: Persisting normalized transactions to PostgreSQL...' };
+          const currentMax = progressBase + Math.floor((progressNext - progressBase) * 0.9);
+          if (prev.progress < currentMax) {
+            return { ...prev, progress: prev.progress + 2 };
           }
           return prev;
         });
-      }, 700);
-    } else {
-      progressTimer = setInterval(() => {
-        setActiveUpload(prev => {
-          if (!prev || prev.status === 'success' || prev.status === 'error') return prev;
-          const nextProg = Math.min(92, prev.progress + 12);
-          const chunkNum = Math.floor(nextProg / 30) + 1;
-          return {
-            ...prev,
-            progress: nextProg,
-            phase: `[AI] Processing Chunk ${chunkNum}: Categorizing merchant entities via Qwen2.5:3b...`
-          };
-        });
-      }, 1500);
-    }
+      }, isAi ? 1500 : 700);
 
-    const formData = new FormData();
-    formData.append('bank_id', bankId);
-    formData.append('account_id', accountId);
-    formData.append('file_type', fileType);
-    formData.append('processing_engine', processingEngine);
-    if (pdfPassword && pdfPassword.trim()) {
-      formData.append('pdf_password', pdfPassword.trim());
-    }
-    formData.append('file', file);
-
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-      clearInterval(progressTimer);
-      const data = await res.json();
-
-      if (res.ok) {
-        setActiveUpload({
-          status: 'success',
-          phase: isAi ? '[AI] Successfully extracted and categorized all transactions.' : 'Phase 3/3: Statement successfully imported & verified.',
-          progress: 100,
-          engine: processingEngine,
-          message: data.message || `Imported ${data.transaction_count || ''} transactions successfully!`
-        });
-        await fetchData();
-        // Auto-dismiss success notification after 6 seconds
-        setTimeout(() => {
-          setActiveUpload(prev => prev?.status === 'success' ? null : prev);
-        }, 6000);
-      } else {
-        setActiveUpload({
-          status: 'error',
-          phase: 'Upload Failed',
-          progress: 0,
-          engine: processingEngine,
-          message: data.detail || 'Failed to extract transactions from statement.'
-        });
+      const formData = new FormData();
+      if (documentType === 'STATEMENT') {
+        formData.append('bank_id', bankId);
+        formData.append('account_id', accountId);
+        formData.append('file_type', fileType);
+        formData.append('processing_engine', processingEngine);
       }
-    } catch (err) {
-      clearInterval(progressTimer);
+      if (pdfPassword && pdfPassword.trim()) {
+        formData.append('pdf_password', pdfPassword.trim());
+      }
+      formData.append('file', file);
+
+      try {
+        const endpoint = documentType === 'STATEMENT' ? '/api/upload' : '/api/payslips/upload';
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          body: formData
+        });
+        clearInterval(progressTimer);
+        
+        if (res.ok) {
+          successCount++;
+        } else {
+          const data = await res.json();
+          failCount++;
+          lastError = data.detail || 'Upload failed.';
+        }
+      } catch (err) {
+        clearInterval(progressTimer);
+        failCount++;
+        lastError = 'Could not connect to server.';
+      }
+    }
+
+    if (successCount > 0 && failCount === 0) {
+      setActiveUpload({
+        status: 'success',
+        phase: 'All documents processed successfully.',
+        progress: 100,
+        engine: isAi ? 'Local AI LLM' : processingEngine,
+        message: `Successfully imported ${successCount} document(s).`
+      });
+      await fetchData();
+      setTimeout(() => setActiveUpload(prev => prev?.status === 'success' ? null : prev), 6000);
+    } else if (successCount > 0 && failCount > 0) {
       setActiveUpload({
         status: 'error',
-        phase: 'Connection Error',
+        phase: 'Partial Success',
+        progress: 100,
+        engine: isAi ? 'Local AI LLM' : processingEngine,
+        message: `${successCount} succeeded, ${failCount} failed. Last error: ${lastError}`
+      });
+      await fetchData();
+    } else {
+      setActiveUpload({
+        status: 'error',
+        phase: 'Upload Failed',
         progress: 0,
-        engine: processingEngine,
-        message: 'Could not connect to backend server.'
+        engine: isAi ? 'Local AI LLM' : processingEngine,
+        message: `Failed to import documents. Last error: ${lastError}`
       });
     }
   };
@@ -231,7 +241,7 @@ export const FinanceProvider = ({ children }) => {
       rules,
       activeUpload,
       fetchData,
-      startStatementUpload,
+      startDocumentUpload,
       dismissUploadSnackbar,
       addRule,
       deleteRule,

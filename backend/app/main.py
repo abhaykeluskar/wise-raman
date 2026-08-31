@@ -242,6 +242,31 @@ class CreditCardStatementResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class PayslipResponse(BaseModel):
+    id: uuid.UUID
+    employee_id: Optional[str] = None
+    employee_name: Optional[str] = None
+    company_name: Optional[str] = None
+    period_month: int
+    period_year: int
+    bank_account_no: Optional[str] = None
+    basic_salary: Decimal
+    hra: Decimal
+    special_allowance: Decimal
+    other_earnings: Decimal
+    gross_earnings: Decimal
+    provident_fund: Decimal
+    professional_tax: Decimal
+    income_tax_tds: Decimal
+    other_deductions: Decimal
+    gross_deductions: Decimal
+    net_pay: Decimal
+    account_id: Optional[uuid.UUID] = None
+    transaction_id: Optional[uuid.UUID] = None
+
+    class Config:
+        from_attributes = True
+
 # --- Background Task for AI Enrichment ---
 def enrich_transactions_task(transaction_ids: List[uuid.UUID]):
     """Background task to run Ollama categorization and vector embedding creation."""
@@ -1137,3 +1162,110 @@ def get_credit_cards_summary(db: Session = Depends(get_db)):
         "current_outstanding": float(outstanding),
         "upcoming_bills": float(upcoming_bills_total)
     }
+
+# ==========================================
+# PAYSLIPS ENDPOINTS
+# ==========================================
+
+@app.post("/api/payslips/upload", response_model=PayslipResponse)
+def upload_payslip(
+    pdf_password: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    from app.parser import parse_payslip
+    from app.models import Payslip, Transaction
+    from datetime import date as date_type, timedelta
+    
+    contents = file.file.read()
+    if len(contents) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large")
+        
+    try:
+        parsed_data = parse_payslip(contents, password=pdf_password.strip() if pdf_password and pdf_password.strip() else None)
+    except Exception as e:
+        logger.error(f"Error parsing payslip: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+        
+    company_name = parsed_data.get("company_name")
+    period_month = parsed_data.get("period_month")
+    period_year = parsed_data.get("period_year")
+
+    # Duplicate Detection
+    if company_name and period_month and period_year:
+        existing_payslip = db.query(Payslip).filter(
+            Payslip.company_name == company_name,
+            Payslip.period_month == period_month,
+            Payslip.period_year == period_year
+        ).first()
+        
+        if existing_payslip:
+            raise HTTPException(status_code=400, detail=f"Payslip for {company_name} ({period_month}/{period_year}) already exists.")
+
+    # Build Payslip record
+    payslip = Payslip(
+        employee_id=parsed_data.get("employee_id"),
+        employee_name=parsed_data.get("employee_name"),
+        company_name=parsed_data.get("company_name"),
+        period_month=parsed_data.get("period_month"),
+        period_year=parsed_data.get("period_year"),
+        bank_account_no=parsed_data.get("bank_account_no"),
+        basic_salary=parsed_data.get("basic_salary", 0),
+        hra=parsed_data.get("hra", 0),
+        special_allowance=parsed_data.get("special_allowance", 0),
+        other_earnings=parsed_data.get("other_earnings", 0),
+        gross_earnings=parsed_data.get("gross_earnings", 0),
+        provident_fund=parsed_data.get("provident_fund", 0),
+        professional_tax=parsed_data.get("professional_tax", 0),
+        income_tax_tds=parsed_data.get("income_tax_tds", 0),
+        other_deductions=parsed_data.get("other_deductions", 0),
+        gross_deductions=parsed_data.get("gross_deductions", 0),
+        net_pay=parsed_data.get("net_pay", 0)
+    )
+    
+    # Try to link to a transaction
+    # We look for a transaction with amount == net_pay around the end of period_month or start of next month
+    if payslip.net_pay and payslip.period_year and payslip.period_month:
+        try:
+            # End of month roughly
+            target_month = payslip.period_month
+            target_year = payslip.period_year
+            
+            # Start of next month
+            if target_month == 12:
+                next_month = 1
+                next_year = target_year + 1
+            else:
+                next_month = target_month + 1
+                next_year = target_year
+                
+            start_date = date_type(target_year, target_month, 20)
+            end_date = date_type(next_year, next_month, 15)
+            
+            # Find matching transaction (exact amount, Income)
+            matching_tx = db.query(Transaction).filter(
+                Transaction.amount == Decimal(str(payslip.net_pay)),
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                Transaction.transaction_type == TransactionType.INCOME
+            ).first()
+            
+            if matching_tx:
+                payslip.transaction_id = matching_tx.id
+                payslip.account_id = matching_tx.account_id
+                
+        except Exception as e:
+            logger.warning(f"Failed to link payslip to transaction automatically: {e}")
+            
+    db.add(payslip)
+    db.commit()
+    db.refresh(payslip)
+    
+    return payslip
+
+@app.get("/api/payslips", response_model=List[PayslipResponse])
+def get_payslips(db: Session = Depends(get_db)):
+    from app.models import Payslip
+    payslips = db.query(Payslip).order_by(Payslip.period_year.desc(), Payslip.period_month.desc()).all()
+    return payslips
+

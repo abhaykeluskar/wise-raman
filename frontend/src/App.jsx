@@ -12,6 +12,7 @@ import { SettingsView } from './components/views/SettingsView';
 import { UploadStatementModal } from './components/organisms/UploadStatementModal';
 import { UploadSnackbar } from './components/molecules/UploadSnackbar';
 
+import { PayslipsView } from './components/views/PayslipsView';
 import { AnalyticsView } from './components/views/AnalyticsView';
 
 const MainLayout = () => {
@@ -56,6 +57,9 @@ const MainLayout = () => {
         )}
         {activeTab === 'accounts' && (
           <BankAccountsView />
+        )}
+        {activeTab === 'payslips' && (
+          <PayslipsView />
         )}
         {activeTab === 'analytics' && (
           <AnalyticsView />

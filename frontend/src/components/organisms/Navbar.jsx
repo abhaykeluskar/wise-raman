@@ -13,6 +13,7 @@ import {
   Sun,
   Landmark,
   PieChart,
+  Briefcase,
   MoreHorizontal,
   X
 } from 'lucide-react';
@@ -25,6 +26,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
   const desktopNavItems = [
     { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { key: 'accounts', label: 'Accounts', icon: Landmark },
+    { key: 'payslips', label: 'Payslips', icon: Briefcase },
     { key: 'analytics', label: 'Analytics', icon: PieChart },
     { key: 'transactions', label: 'Ledger', icon: ListFilter },
     { key: 'cards', label: `Cards (${cards.length})`, icon: CreditCard },
@@ -37,7 +39,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
     { key: 'analytics', label: 'Stats', icon: PieChart },
   ];
 
-  const moreTabKeys = ['accounts', 'ai-assistant', 'settings'];
+  const moreTabKeys = ['accounts', 'ai-assistant', 'settings', 'payslips'];
   const moreIsActive = moreTabKeys.includes(activeTab);
 
   useEffect(() => {
@@ -195,6 +197,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
           <div className="grid grid-cols-2 gap-2">
             {[
               { key: 'accounts', label: 'Bank Accounts', icon: Landmark },
+              { key: 'payslips', label: 'Payslips', icon: Briefcase },
               { key: 'ai-assistant', label: 'AI Assistant', icon: MessageSquare },
               { key: 'settings', label: 'Settings', icon: Settings },
               { key: 'upload', label: 'Import Statement', icon: Upload },
