@@ -14,13 +14,17 @@ import { UploadSnackbar } from './components/molecules/UploadSnackbar';
 
 import { PayslipsView } from './components/views/PayslipsView';
 import { AnalyticsView } from './components/views/AnalyticsView';
+import { LoginView } from './components/views/LoginView';
+import { RegisterView } from './components/views/RegisterView';
+import { DevToolsView } from './components/views/DevToolsView';
 
 const MainLayout = () => {
   const { theme } = useTheme();
-  const { loading, accounts, ledgerFocus } = useFinance();
+  const { loading, accounts, ledgerFocus, token } = useFinance();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
   const isBootstrapping = loading && accounts.length === 0;
 
   useEffect(() => {
@@ -31,6 +35,21 @@ const MainLayout = () => {
     setSelectedCardId(cardId);
     setActiveTab('cards');
   };
+
+  if (!token) {
+    return (
+      <div className={`min-h-screen font-sans transition-colors duration-300 ${
+        theme === 'dark' 
+          ? 'bg-[#181828] text-[#EAEAEA]' 
+          : 'bg-[#E0E5EC] text-[#2D3436]'
+      }`}>
+        {authMode === 'login' 
+          ? <LoginView onNavigateRegister={() => setAuthMode('register')} />
+          : <RegisterView onNavigateLogin={() => setAuthMode('login')} />
+        }
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen font-sans transition-colors duration-300 ${
@@ -75,6 +94,9 @@ const MainLayout = () => {
         )}
         {activeTab === 'settings' && (
           <SettingsView />
+        )}
+        {activeTab === 'dev-tools' && (
+          <DevToolsView />
         )}
       </main>
 

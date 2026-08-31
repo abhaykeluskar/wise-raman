@@ -15,12 +15,14 @@ import {
   PieChart,
   Briefcase,
   MoreHorizontal,
-  X
+  X,
+  LogOut,
+  Terminal
 } from 'lucide-react';
 
 export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
   const { theme, setTheme, style } = useTheme();
-  const { cards } = useFinance();
+  const { cards, logout, user } = useFinance();
   const [moreOpen, setMoreOpen] = useState(false);
 
   const desktopNavItems = [
@@ -32,6 +34,10 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
     { key: 'cards', label: `Cards (${cards.length})`, icon: CreditCard },
   ];
 
+  if (user?.email === 'dev@test.com') {
+    desktopNavItems.push({ key: 'dev-tools', label: 'Dev Tools', icon: Terminal });
+  }
+
   const mobileNavItems = [
     { key: 'dashboard', label: 'Home', icon: BarChart3 },
     { key: 'transactions', label: 'Ledger', icon: ListFilter },
@@ -39,7 +45,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
     { key: 'analytics', label: 'Stats', icon: PieChart },
   ];
 
-  const moreTabKeys = ['accounts', 'ai-assistant', 'settings', 'payslips'];
+  const moreTabKeys = ['accounts', 'ai-assistant', 'settings', 'payslips', 'dev-tools'];
   const moreIsActive = moreTabKeys.includes(activeTab);
 
   useEffect(() => {
@@ -163,6 +169,16 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
           >
             {theme === 'dark' ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-indigo-600" />}
           </button>
+          
+          <button
+            type="button"
+            onClick={logout}
+            className={`hidden sm:flex p-2.5 min-h-11 min-w-11 rounded-xl border-0 cursor-pointer transition-all ${style('neu-btn-dark text-slate-300', 'neu-btn-light text-slate-700')}`}
+            title="Log out"
+            aria-label="Log out"
+          >
+            <LogOut className="h-4 w-4 text-red-500 hover:text-red-400" />
+          </button>
         </div>
 
       </div>
@@ -200,7 +216,9 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
               { key: 'payslips', label: 'Payslips', icon: Briefcase },
               { key: 'ai-assistant', label: 'AI Assistant', icon: MessageSquare },
               { key: 'settings', label: 'Settings', icon: Settings },
+              ...(user?.email === 'dev@test.com' ? [{ key: 'dev-tools', label: 'Dev Tools', icon: Terminal }] : []),
               { key: 'upload', label: 'Import Statement', icon: Upload },
+              { key: 'logout', label: 'Log out', icon: LogOut },
             ].map(item => {
               const Icon = item.icon;
               const isActive = item.key !== 'upload' && activeTab === item.key;
@@ -212,6 +230,11 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
                     if (item.key === 'upload') {
                       setMoreOpen(false);
                       onOpenUploadModal();
+                      return;
+                    }
+                    if (item.key === 'logout') {
+                      setMoreOpen(false);
+                      logout();
                       return;
                     }
                     handleTabClick(item.key);

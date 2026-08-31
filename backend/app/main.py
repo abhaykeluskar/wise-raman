@@ -14,10 +14,17 @@ import json
 import hashlib
 
 from app.config import settings
-from app.database import get_db, init_db, SessionLocal
+from app.database import get_db, init_db, SessionLocal, Base, engine
 from app.models import Account, Transaction, Category, CreditCard, CreditCardStatement
 from app.parser import parse_statement
-from app.ai import ensure_models_exist, categorize_transaction, get_embedding, query_financial_rag, is_safe_ollama_url
+from app.ai import ensure_models_exist, categorize_transaction, get_embedding, query_financial_rag
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+
+
+
 from app.telemetry import backend_telemetry, ai_telemetry
 
 def generate_transaction_fingerprint(account_id: uuid.UUID, txn_date: date_type, amount: Decimal, raw_text: str) -> str:
@@ -55,8 +62,28 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup_event():
-    # Initialize DB (enable pgvector, create tables)
+    logger.info("Initializing database extension and models...")
     init_db()
+    
+    # Initialize Dev Account
+    db = SessionLocal()
+    try:
+        from app.models import User
+        dev_user = db.query(User).filter(User.email == "dev@test.com").first()
+        if not dev_user:
+            dev_user = User(
+                email="dev@test.com",
+                name="Developer",
+                password_hash=pwd_context.hash("dev@2026")
+            )
+            db.add(dev_user)
+            db.commit()
+            logger.info("Dev account initialized (dev@test.com / dev@2026)")
+    except Exception as e:
+        logger.error(f"Error initializing dev account: {e}")
+    finally:
+        db.close()
+    
     logger.info("Database initialized.")
     
     # Initialize default categories if database table is empty
@@ -140,6 +167,91 @@ def startup_event():
 from pydantic import BaseModel
 
 import uuid
+
+SECRET_KEY = "your-secret-key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    name: str
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=401, detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        from jose import jwt
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except Exception:
+        raise credentials_exception
+    from app.models import User
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+def is_dev_user(current_user = Depends(get_current_user)):
+    if current_user.email != "dev@test.com":
+        raise HTTPException(status_code=403, detail="Not authorized for Developer Tools")
+    return current_user
+
+@app.post("/api/auth/register")
+def register(user: UserCreate, db: Session = Depends(get_db)):
+    from app.models import User
+    existing = db.query(User).filter(User.email == user.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    db_user = User(
+        email=user.email,
+        name=user.name,
+        password_hash=get_password_hash(user.password)
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return {"message": "User registered successfully"}
+
+@app.post("/api/auth/login")
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    from app.models import User
+    user = db.query(User).filter(User.email == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": str(user.id)}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer", "user_id": str(user.id)}
+
 
 class BankBase(BaseModel):
     name: str
@@ -302,7 +414,8 @@ def enrich_transactions_task(transaction_ids: List[uuid.UUID]):
                 db.commit()
 
         db.commit()
-        run_bridge_algorithm(db)
+        if txs and txs[0].account:
+            run_bridge_algorithm(db, txs[0].account.user_id)
         logger.info(f"Successfully processed {len(txs)} transactions in background.")
     except Exception as e:
         logger.error(f"Error in background enrichment: {str(e)}")
@@ -386,11 +499,13 @@ def upload_bank_statement(
     pdf_password: Optional[str] = Form(None),
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
-    account = db.query(Account).filter(Account.id == account_id, Account.bank_id == bank_id).first()
+    account = db.query(Account).filter(Account.id == account_id, Account.bank_id == bank_id, Account.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
+
         
     try:
         from app.models import AccountSubtype
@@ -577,6 +692,10 @@ def upload_bank_statement(
     # Trigger background worker for AI categorization & embeddings if new transactions were inserted
     if saved_tx_ids:
         background_tasks.add_task(enrich_transactions_task, saved_tx_ids)
+        
+        # Trigger reconciliation
+        from app.services.reconciliation import reconcile_transfers
+        background_tasks.add_task(reconcile_transfers, db, str(current_user.id))
     
     msg = f"Successfully imported {len(saved_tx_ids)} new transactions."
     if skipped_duplicates > 0:
@@ -895,7 +1014,7 @@ class LlmSettingsRequest(BaseModel):
     num_ctx: Optional[int] = None
 
 @app.get("/api/settings/llm")
-def get_llm_settings():
+def get_llm_settings(current_user = Depends(is_dev_user)):
     """Retrieve active LLM and Ollama configuration with detected local models."""
     import requests
     available_models = []
@@ -919,7 +1038,7 @@ def get_llm_settings():
     }
 
 @app.post("/api/settings/llm")
-def update_llm_settings(req: LlmSettingsRequest):
+def update_llm_settings(req: LlmSettingsRequest, current_user = Depends(is_dev_user)):
     """Update active LLM configuration in runtime."""
     if req.ollama_url:
         url = req.ollama_url.strip().rstrip('/')
@@ -948,7 +1067,7 @@ class TestDatabaseRequest(BaseModel):
     conn_string: str
 
 @app.post("/api/settings/test-ollama")
-def test_ollama_connection(request: TestOllamaRequest):
+def test_ollama_connection(request: TestOllamaRequest, current_user = Depends(is_dev_user)):
     """Test if we can connect to the local Ollama endpoint and check active models."""
     import requests
     url = request.url.strip().rstrip('/')
@@ -1062,6 +1181,24 @@ def update_credit_card(card_id: uuid.UUID, card_data: CreditCardCreate, db: Sess
     db.commit()
     return db.query(CreditCard).options(joinedload(CreditCard.bank)).filter(CreditCard.id == card_id).first()
 
+@app.delete("/api/dev/purge")
+def purge_database(current_user = Depends(is_dev_user), db: Session = Depends(get_db)):
+    """Deletes all application data across all users except the Users table itself."""
+    try:
+        from app.models import Transaction, Account, CreditCardStatement, CreditCard, Bank, TransferLink, Payslip
+        db.query(TransferLink).delete()
+        db.query(Transaction).delete()
+        db.query(Payslip).delete()
+        db.query(CreditCardStatement).delete()
+        db.query(CreditCard).delete()
+        db.query(Account).delete()
+        db.query(Bank).delete()
+        db.commit()
+        return {"status": "success", "message": "All database records purged"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/api/cards/{card_id}")
 def delete_credit_card(card_id: uuid.UUID, db: Session = Depends(get_db)):
     """Delete a credit card from database."""
@@ -1073,42 +1210,11 @@ def delete_credit_card(card_id: uuid.UUID, db: Session = Depends(get_db)):
     return {"status": "success", "message": f"Successfully deleted card {card_id}"}
 
 
-def run_bridge_algorithm(db: Session):
+def run_bridge_algorithm(db: Session, user_id: str):
     """Identify and link transfers and credit card payments across accounts."""
-    from app.models import Transaction, TransactionType, AccountSubtype
-    
-    # Eager load account to eliminate N+1 queries during bridge traversal
-    txs = db.query(Transaction).options(joinedload(Transaction.account)).filter(Transaction.is_excluded_from_spending == False).all()
-    
-    for tx in txs:
-        if not tx.account:
-            continue
-        desc_lower = tx.description.lower() if tx.description else ""
-        
-        # CC Payment Received (Cash In to CC)
-        if tx.account.subtype == AccountSubtype.CREDIT_CARD and tx.amount > 0:
-            tx.transaction_type = TransactionType.CC_PAYMENT_RECEIVED
-            tx.is_excluded_from_spending = True
-            tx.category = "Transfer"
-            
-        # CC Bill Payment from Savings (Cash Out from Savings)
-        elif tx.account.subtype in [AccountSubtype.SAVINGS, AccountSubtype.CURRENT] and tx.amount < 0 and (
-            "credit card" in desc_lower
-            or "cc payment" in desc_lower
-            or "billdesk" in desc_lower
-            or "mb/ib payment" in desc_lower
-        ):
-            tx.transaction_type = TransactionType.CC_BILL_PAYMENT
-            tx.is_excluded_from_spending = True
-            tx.category = "Transfer"
-            
-        elif any(k in desc_lower for k in ("neft", "rtgs", "imps", "internal fund", "own account", "self transfer", "to self")):
-            tx.transaction_type = TransactionType.TRANSFER_INTERNAL
-            tx.is_excluded_from_spending = True
-            tx.category = "Transfer"
-                
+    from app.services.reconciliation import reconcile_transfers
     try:
-        db.commit()
+        reconcile_transfers(db, str(user_id))
     except Exception as e:
         logger.error(f"Error in bridge algorithm: {e}")
         db.rollback()
@@ -1162,6 +1268,141 @@ def get_credit_cards_summary(db: Session = Depends(get_db)):
         "current_outstanding": float(outstanding),
         "upcoming_bills": float(upcoming_bills_total)
     }
+
+# ==========================================
+# NEW ENDPOINTS FOR NET WORTH, SUBSCRIPTIONS, CASHFLOW
+# ==========================================
+
+@app.get("/api/net-worth")
+def get_net_worth(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    from app.models import Account, AccountClassification
+    accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
+    
+    total_assets = 0.0
+    total_liabilities = 0.0
+    breakdown = {}
+
+    for acc in accounts:
+        val = float(acc.balance)
+        subtype = acc.subtype.value
+        
+        if acc.classification == AccountClassification.ASSET:
+            total_assets += val
+            breakdown[subtype] = breakdown.get(subtype, 0.0) + val
+        else:
+            debt = abs(val)
+            total_liabilities += debt
+            breakdown[subtype] = breakdown.get(subtype, 0.0) + debt
+
+    return {
+        "total_assets": total_assets,
+        "total_liabilities": total_liabilities,
+        "net_worth": total_assets - total_liabilities,
+        "breakdown": breakdown
+    }
+
+@app.get("/api/subscriptions")
+def get_subscriptions(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    from app.models import Transaction
+    from collections import defaultdict
+    from datetime import timedelta
+    
+    transactions = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.amount < 0,
+        Transaction.is_excluded_from_spending == False
+    ).order_by(Transaction.date).all()
+    
+    groups = defaultdict(list)
+    for tx in transactions:
+        desc = tx.description or tx.raw_text
+        if desc:
+            groups[desc.strip()].append(tx)
+            
+    subscriptions = []
+    
+    for desc, txs in groups.items():
+        if len(txs) < 2:
+            continue
+            
+        amounts = [abs(float(tx.amount)) for tx in txs]
+        avg_amount = sum(amounts) / len(amounts)
+        
+        if any(abs(amt - avg_amount) > avg_amount * 0.2 for amt in amounts):
+            continue
+            
+        txs_sorted = sorted(txs, key=lambda x: x.date)
+        intervals = []
+        for i in range(1, len(txs_sorted)):
+            delta = (txs_sorted[i].date - txs_sorted[i-1].date).days
+            intervals.append(delta)
+            
+        if not intervals:
+            continue
+            
+        avg_interval = sum(intervals) / len(intervals)
+        
+        freq = None
+        if 25 <= avg_interval <= 35:
+            freq = "Monthly"
+        elif 350 <= avg_interval <= 380:
+            freq = "Yearly"
+        elif 6 <= avg_interval <= 8:
+            freq = "Weekly"
+            
+        if freq:
+            last_date = txs_sorted[-1].date
+            if freq == "Monthly":
+                next_date = last_date + timedelta(days=30)
+            elif freq == "Yearly":
+                next_date = last_date + timedelta(days=365)
+            else:
+                next_date = last_date + timedelta(days=7)
+                
+            subscriptions.append({
+                "name": desc,
+                "amount": avg_amount,
+                "frequency": freq,
+                "next_expected_date": next_date.isoformat()
+            })
+            
+    return subscriptions
+
+@app.get("/api/analytics/cashflow")
+def get_cashflow(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    from sqlalchemy import func, case
+    from app.models import Transaction
+    from datetime import date as date_type, timedelta
+    
+    today = date_type.today()
+    twelve_months_ago = today - timedelta(days=365)
+    start_date = twelve_months_ago.replace(day=1)
+
+    query = db.query(
+        func.to_char(Transaction.date, "Mon YYYY").label("month_str"),
+        func.to_char(Transaction.date, "YYYY-MM").label("month_sort"),
+        func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)).label("cash_in"),
+        func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)), else_=0)).label("cash_out")
+    ).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.is_excluded_from_spending == False,
+        Transaction.date >= start_date
+    ).group_by(
+        "month_str",
+        "month_sort"
+    ).order_by("month_sort")
+    
+    results = query.all()
+    
+    data = []
+    for row in results:
+        data.append({
+            "month": row.month_str,
+            "cash_in": float(row.cash_in) if row.cash_in else 0.0,
+            "cash_out": float(row.cash_out) if row.cash_out else 0.0
+        })
+        
+    return data
 
 # ==========================================
 # PAYSLIPS ENDPOINTS

@@ -14,3 +14,7 @@ xlrd==2.0.1
 pytesseract==0.3.10
 pypdfium2==4.30.0
 Pillow==10.3.0
+passlib[bcrypt]
+python-jose[cryptography]
+bcrypt==4.0.1
+pyxirr==0.9.3

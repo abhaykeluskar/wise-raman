@@ -1096,6 +1096,42 @@ def parse_statement(
                 statement_summary["opening_balance"] = statement_summary.get("opening_balance") or fallback.get("opening_balance")
         elif fallback:
             transactions = fallback
+
+    # Phase 1.3: UPI Intelligence & Merchant Parsing
+    def enhance_upi_transaction(txn):
+        raw_text = txn.get("raw_text", "").upper()
+        desc = txn.get("description", "").upper()
+        
+        # Simple check for UPI
+        if "UPI" in raw_text or "UPI" in desc:
+            txn["subcategory"] = "UPI"
+            
+            # Try to extract UPI ID (VPA)
+            upi_match = re.search(r'([A-Z0-9\.\-_]+@[A-Z0-9A-Z]+)', raw_text)
+            if upi_match:
+                upi_id = upi_match.group(1).lower()
+                txn["reference_id"] = txn.get("reference_id") or upi_id
+                
+                # P2M vs P2P Heuristic
+                merchant_keywords = ["RETAIL", "STORE", "PAYTM", "BHARATPE", "ENTERPRISE", "LTD", "PVT", "ZOMATO", "SWIGGY", "AMAZON", "FLIPKART", "UBER", "OLA", "CRED", "SUPERMARKET", "MART", "FOOD"]
+                
+                is_p2m = any(k in raw_text for k in merchant_keywords) or any(k in upi_id for k in ["merchant", "biz", "paytm", "bharatpe"])
+                
+                if is_p2m:
+                    txn["category"] = "Shopping/Merchant"
+                else:
+                    txn["category"] = "Transfer"
+                    
+                # Extract Sender/Receiver Name heuristically
+                parts = [p.strip() for p in raw_text.split('/')]
+                for i, p in enumerate(parts):
+                    if p in ("UPI", "P2A", "P2M", "REV") and i + 1 < len(parts):
+                        if "@" not in parts[i+1] and len(parts[i+1]) > 2:
+                            txn["description"] = parts[i+1].title()
+                            break
+        return txn
+
+    transactions = [enhance_upi_transaction(tx) for tx in transactions]
         
     return {
         "transactions": transactions,

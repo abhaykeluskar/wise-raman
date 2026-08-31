@@ -19,14 +19,16 @@ def init_db():
     # Enable the pgvector extension in Postgres
     with engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        conn.commit()
+        
         # Safe idempotent column additions
         try:
             conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fingerprint VARCHAR(64);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_transactions_fingerprint ON transactions (fingerprint);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_transactions_account_fingerprint ON transactions (account_id, fingerprint);"))
+            conn.commit()
         except Exception:
             pass
-        conn.commit()
         
     # Create all tables safely if they do not already exist (preserving existing data)
     Base.metadata.create_all(bind=engine)

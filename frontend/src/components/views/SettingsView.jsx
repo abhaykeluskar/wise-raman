@@ -197,34 +197,6 @@ export const SettingsView = () => {
     }
   };
 
-  const handlePurgeAll = async () => {
-    const isConfirmed = await confirm({
-      title: 'Reset & Purge All Transactions',
-      message: 'Are you sure you want to purge all transaction logs? This resets all balances to ₹0.00 and cannot be undone.',
-      confirmText: 'Purge Everything',
-      isDanger: true
-    });
-
-    if (!isConfirmed) return;
-
-    setIsPurging(true);
-    try {
-      const res = await fetch('/api/transactions/purge', { method: 'DELETE' });
-      if (res.ok) {
-        setTransactions([]);
-        await fetchData();
-        toast.success('All transactions purged successfully.', 'Database Reset');
-      } else {
-        const err = await res.json();
-        toast.error(err.detail || 'Failed to purge transactions.', 'Error');
-      }
-    } catch (err) {
-      console.error("Error purging transactions:", err);
-      toast.error('Network connection error while purging data.', 'Error');
-    } finally {
-      setIsPurging(false);
-    }
-  };
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-16">
@@ -586,43 +558,6 @@ export const SettingsView = () => {
         </div>
       </div>
 
-      {/* 6. System & Telemetry Live Logs */}
-      <div className="flex flex-col gap-2">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-          Backend System & AI Telemetry Logs
-        </h3>
-        <TelemetryTerminal title="Backend System Live Logs" endpoint="/api/backend/logs" isCollapsible={true} defaultExpanded={true} />
-      </div>
-
-      {/* 7. Danger Zone / Data Management */}
-      <div className={`p-6 rounded-2xl border border-red-500/20 bg-red-950/10 flex flex-col gap-4 transition-all`}>
-        <div className="flex items-center gap-2 text-red-400">
-          <AlertTriangle className="h-4 w-4" />
-          <h3 className="text-xs font-bold uppercase tracking-wider">
-            Danger Zone
-          </h3>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex flex-col">
-            <span className={`text-xs font-bold ${style('text-slate-100', 'text-slate-800')}`}>
-              Purge All Transaction Data
-            </span>
-            <span className="text-xs text-slate-400 font-normal">
-              Permanently deletes all parsed statements and transactions, resetting all balances to ₹0.00.
-            </span>
-          </div>
-
-          <Button
-            variant="danger"
-            onClick={handlePurgeAll}
-            loading={isPurging}
-            icon={Trash2}
-          >
-            Purge All Data
-          </Button>
-        </div>
-      </div>
 
       {/* Add Bank Account Modal */}
       <AddAccountModal

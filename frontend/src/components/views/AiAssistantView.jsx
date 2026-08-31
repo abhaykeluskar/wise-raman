@@ -20,7 +20,7 @@ import {
 
 export const AiAssistantView = () => {
   const { style } = useTheme();
-  const { transactions } = useFinance();
+  const { transactions, user } = useFinance();
 
   // Chat State
   const [messages, setMessages] = useState([
@@ -180,10 +180,13 @@ export const AiAssistantView = () => {
     <div className="flex flex-col gap-5 animate-in fade-in duration-300 max-w-6xl mx-auto pb-12">
       
       {/* 1. TOP: Live AI Engine Telemetry Console */}
-      <TelemetryTerminal title="AI Engine Live Telemetry" endpoint="/api/ai/logs" isCollapsible={true} defaultExpanded={false} />
+      {user?.email === 'dev@test.com' && (
+        <TelemetryTerminal title="AI Engine Live Telemetry" endpoint="/api/ai/logs" isCollapsible={true} defaultExpanded={false} />
+      )}
 
       {/* 2. LLM Engine Configuration Panel (Expandable) */}
-      <div className={`p-5 rounded-2xl border-0 flex flex-col gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+      {user?.email === 'dev@test.com' && (
+        <div className={`p-5 rounded-2xl border-0 flex flex-col gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
         <div 
           onClick={() => setShowLlmConfig(!showLlmConfig)}
           className="flex items-center justify-between cursor-pointer select-none"
@@ -379,6 +382,7 @@ export const AiAssistantView = () => {
           </div>
         )}
       </div>
+      )}
 
       {/* 3. Conversational Financial RAG Chat Interface */}
       <div className={`flex flex-col justify-between p-4 sm:p-6 rounded-2xl border-0 shadow-xl transition-all min-h-[420px] sm:min-h-[500px] ${style('neu-flat-dark', 'neu-flat-light')}`}>

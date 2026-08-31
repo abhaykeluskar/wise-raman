@@ -3,6 +3,94 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 const FinanceContext = createContext();
 
 export const FinanceProvider = ({ children }) => {
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('user')) || null; } catch { return null; }
+  });
+  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
+
+  const logout = useCallback(() => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
+  }, []);
+
+  const login = async (email, password) => {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ username: email, password: password })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const userData = { id: data.user_id, email: email, name: "User" };
+        setUser(userData);
+        setToken(data.access_token);
+        localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem('token', data.access_token);
+        return { success: true };
+      } else {
+        const err = await res.json();
+        return { success: false, error: err.detail || 'Login failed' };
+      }
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const register = async (name, email, password) => {
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data.user);
+        setToken(data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('token', data.token);
+        return { success: true };
+      } else {
+        const err = await res.json();
+        return { success: false, error: err.detail || 'Registration failed' };
+      }
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const authFetch = useCallback(async (url, options = {}) => {
+    const headers = { ...options.headers };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      logout();
+    }
+    return res;
+  }, [token, logout]);
+
+  // Hook into global fetch to intercept ALL app fetches for ease (though we also use authFetch here)
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      let [resource, config] = args;
+      if (typeof resource === 'string' && resource.startsWith('/api') && !resource.startsWith('/api/auth')) {
+        config = config || {};
+        config.headers = { ...config.headers };
+        if (token) config.headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await originalFetch(resource, config);
+      if (res.status === 401) logout();
+      return res;
+    };
+    return () => { window.fetch = originalFetch; };
+  }, [token, logout]);
+
   const [accounts, setAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [cards, setCards] = useState([]);
@@ -12,6 +100,12 @@ export const FinanceProvider = ({ children }) => {
   const [spendingReport, setSpendingReport] = useState({ categories: [], data: [] });
   const [savingsCashflow, setSavingsCashflow] = useState(null);
   const [creditCardSummary, setCreditCardSummary] = useState(null);
+  
+  // Phase 2 states
+  const [netWorth, setNetWorth] = useState(null);
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [cashflow, setCashflow] = useState([]);
+  
   const [loading, setLoading] = useState(false);
   const [ledgerFocus, setLedgerFocus] = useState(null);
 
@@ -51,13 +145,13 @@ export const FinanceProvider = ({ children }) => {
     setLoading(true);
     try {
       const [accRes, txRes, catRes, cardRes, bankRes, reportRes, stmtRes] = await Promise.all([
-        fetch('/api/accounts'),
-        fetch('/api/transactions?limit=5000'),
-        fetch('/api/categories'),
-        fetch('/api/cards'),
-        fetch('/api/banks'),
-        fetch('/api/reports/spending'),
-        fetch('/api/statements')
+        authFetch('/api/accounts'),
+        authFetch('/api/transactions?limit=5000'),
+        authFetch('/api/categories'),
+        authFetch('/api/cards'),
+        authFetch('/api/banks'),
+        authFetch('/api/reports/spending'),
+        authFetch('/api/statements')
       ]);
 
       if (accRes.ok) setAccounts(await accRes.json());
@@ -70,12 +164,18 @@ export const FinanceProvider = ({ children }) => {
       
       // Fetch analytics
       try {
-        const [cashflowRes, ccSumRes] = await Promise.all([
-          fetch('/api/analytics/savings/cashflow'),
-          fetch('/api/analytics/credit-cards/summary')
+        const [cashflowRes, ccSumRes, netWorthRes, subsRes, phase2CashflowRes] = await Promise.all([
+          authFetch('/api/analytics/savings/cashflow'),
+          authFetch('/api/analytics/credit-cards/summary'),
+          authFetch('/api/net-worth'),
+          authFetch('/api/subscriptions'),
+          authFetch('/api/analytics/cashflow')
         ]);
         if (cashflowRes.ok) setSavingsCashflow(await cashflowRes.json());
         if (ccSumRes.ok) setCreditCardSummary(await ccSumRes.json());
+        if (netWorthRes.ok) setNetWorth(await netWorthRes.json());
+        if (subsRes.ok) setSubscriptions(await subsRes.json());
+        if (phase2CashflowRes.ok) setCashflow(await phase2CashflowRes.json());
       } catch (err) {
         console.warn("Analytics endpoints not ready yet:", err);
       }
@@ -148,7 +248,7 @@ export const FinanceProvider = ({ children }) => {
 
       try {
         const endpoint = documentType === 'STATEMENT' ? '/api/upload' : '/api/payslips/upload';
-        const res = await fetch(endpoint, {
+        const res = await authFetch(endpoint, {
           method: 'POST',
           body: formData
         });
@@ -227,6 +327,12 @@ export const FinanceProvider = ({ children }) => {
 
   return (
     <FinanceContext.Provider value={{
+      user,
+      token,
+      login,
+      register,
+      logout,
+      authFetch,
       accounts,
       transactions: processedTransactions,
       rawTransactions: transactions,
@@ -237,6 +343,9 @@ export const FinanceProvider = ({ children }) => {
       spendingReport,
       savingsCashflow,
       creditCardSummary,
+      netWorth,
+      subscriptions,
+      cashflow,
       loading,
       rules,
       activeUpload,
