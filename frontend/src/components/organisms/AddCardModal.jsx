@@ -8,7 +8,7 @@ import { CreditCard, X, PlusCircle } from 'lucide-react';
 
 export const AddCardModal = ({ isOpen, onClose }) => {
   const { style } = useTheme();
-  const { banks, accounts, fetchData } = useFinance();
+  const { banks, accounts, fetchData , authFetch} = useFinance();
 
   const [cardName, setCardName] = useState('');
   const [bankId, setBankId] = useState(banks[0]?.id || '');
@@ -62,7 +62,7 @@ export const AddCardModal = ({ isOpen, onClose }) => {
         is_active: true
       };
 
-      const res = await fetch('/api/cards', {
+      const res = await authFetch('/api/cards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

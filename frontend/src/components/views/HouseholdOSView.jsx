@@ -31,7 +31,7 @@ import {
 
 export const HouseholdOSView = () => {
   const { theme, style } = useTheme();
-  const { token, API_BASE_URL } = useFinance();
+  const { token, API_BASE_URL , authFetch} = useFinance();
 
   const [activeSubTab, setActiveSubTab] = useState('overview');
   const [loading, setLoading] = useState(false);

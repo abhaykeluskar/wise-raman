@@ -33,7 +33,7 @@ import {
 
 export const TransactionLedgerView = () => {
   const { theme, style } = useTheme();
-  const { transactions, accounts, banks, categories, fetchData, setTransactions, ledgerFocus, clearLedgerFocus } = useFinance();
+  const { transactions, accounts, banks, categories, fetchData, setTransactions, ledgerFocus, clearLedgerFocus , authFetch} = useFinance();
 
   const [selectedBankId, setSelectedBankId] = useState('ALL');
   const [selectedAccountFilter, setSelectedAccountFilter] = useState('ALL');
@@ -185,7 +185,7 @@ export const TransactionLedgerView = () => {
 
   const handleSaveEdit = async (txId) => {
     try {
-      const res = await fetch(`/api/transactions/${txId}`, {
+      const res = await authFetch(`/api/transactions/${txId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -220,7 +220,7 @@ export const TransactionLedgerView = () => {
     if (!isConfirmed) return;
 
     try {
-      const res = await fetch(`/api/transactions/${txId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/transactions/${txId}`, { method: 'DELETE' });
       if (res.ok) {
         setTransactions(prev => prev.filter(t => t.id !== txId));
         toast.success('Transaction deleted.');
@@ -237,7 +237,7 @@ export const TransactionLedgerView = () => {
 
   const handleVerify = async (txId, category) => {
     try {
-      const res = await fetch(`/api/transactions/${txId}`, {
+      const res = await authFetch(`/api/transactions/${txId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category, verified: true })

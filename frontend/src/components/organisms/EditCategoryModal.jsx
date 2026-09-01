@@ -7,7 +7,7 @@ import { Tag, X, Check } from 'lucide-react';
 
 export const EditCategoryModal = ({ isOpen, onClose, category }) => {
   const { style } = useTheme();
-  const { fetchData } = useFinance();
+  const { fetchData , authFetch} = useFinance();
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -38,7 +38,7 @@ export const EditCategoryModal = ({ isOpen, onClose, category }) => {
     setError('');
 
     try {
-      const res = await fetch(`/api/categories/${category.id}`, {
+      const res = await authFetch(`/api/categories/${category.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: cleanName })

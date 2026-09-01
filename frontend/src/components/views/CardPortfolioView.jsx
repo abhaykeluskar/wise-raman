@@ -24,7 +24,7 @@ import {
 
 export const CardPortfolioView = ({ initialCardId }) => {
   const { style } = useTheme();
-  const { cards, accounts, transactions, statements, banks, fetchData } = useFinance();
+  const { cards, accounts, transactions, statements, banks, fetchData , authFetch} = useFinance();
 
   const [selectedCardId, setSelectedCardId] = useState(() => {
     return initialCardId || (cards[0]?.id ?? null);
@@ -154,7 +154,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
     if (!newCardName.trim()) return;
 
     try {
-      const res = await fetch('/api/cards', {
+      const res = await authFetch('/api/cards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -196,7 +196,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
     if (!isConfirmed) return;
 
     try {
-      const res = await fetch(`/api/cards/${cardId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/cards/${cardId}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success(`Card '${cardName}' removed.`);
         fetchData();

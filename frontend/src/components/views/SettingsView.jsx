@@ -37,7 +37,7 @@ export const SettingsView = () => {
     deleteRule, 
     fetchData,
     setTransactions 
-  } = useFinance();
+  , authFetch} = useFinance();
 
   // Modals state
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
@@ -85,7 +85,7 @@ export const SettingsView = () => {
     setCategoryError('');
 
     try {
-      const res = await fetch('/api/categories', {
+      const res = await authFetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newCategoryName.trim() })
@@ -125,7 +125,7 @@ export const SettingsView = () => {
     if (!isConfirmed) return;
 
     try {
-      const res = await fetch(`/api/categories/${cat.id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/categories/${cat.id}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success(`Category '${cat.name}' deleted.`);
         await fetchData();
@@ -158,7 +158,7 @@ export const SettingsView = () => {
     if (!isConfirmed) return;
 
     try {
-      const res = await fetch(`/api/cards/${cardId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/cards/${cardId}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success(`Card '${cardName}' deleted.`);
         await fetchData();
@@ -183,7 +183,7 @@ export const SettingsView = () => {
     if (!isConfirmed) return;
 
     try {
-      const res = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/accounts/${accountId}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success(`Account '${accountName}' deleted.`);
         await fetchData();

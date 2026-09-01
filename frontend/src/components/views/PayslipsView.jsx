@@ -38,8 +38,11 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+import { useFinance } from '../../context/FinanceContext';
+
 export const PayslipsView = () => {
   const { theme, style } = useTheme();
+  const { authFetch } = useFinance();
   const [payslips, setPayslips] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -59,7 +62,7 @@ export const PayslipsView = () => {
   useEffect(() => {
     const fetchPayslips = async () => {
       try {
-        const res = await fetch('/api/payslips');
+        const res = await authFetch('/api/payslips');
         if (res.ok) {
           const data = await res.json();
           setPayslips(data);

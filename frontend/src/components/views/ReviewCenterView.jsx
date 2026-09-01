@@ -26,7 +26,7 @@ import {
 
 export const ReviewCenterView = () => {
   const { theme, style } = useTheme();
-  const { token, API_BASE_URL } = useFinance();
+  const { token, API_BASE_URL , authFetch} = useFinance();
 
   const [activeTab, setActiveTab] = useState('reconciliation');
   const [loading, setLoading] = useState(false);

@@ -20,7 +20,7 @@ import {
 
 export const AiAssistantView = () => {
   const { style } = useTheme();
-  const { transactions, user } = useFinance();
+  const { transactions, user , authFetch} = useFinance();
 
   // Chat State
   const [messages, setMessages] = useState([
@@ -55,7 +55,7 @@ export const AiAssistantView = () => {
 
   // Fetch initial LLM settings
   useEffect(() => {
-    fetch('/api/settings/llm')
+    authFetch('/api/settings/llm')
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data) {
@@ -80,7 +80,7 @@ export const AiAssistantView = () => {
   const handleTestAi = async () => {
     setAiTestStatus({ type: 'loading', message: 'Testing connection to Ollama...' });
     try {
-      const res = await fetch('/api/settings/test-ollama', {
+      const res = await authFetch('/api/settings/test-ollama', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: ollamaUrl })
@@ -104,7 +104,7 @@ export const AiAssistantView = () => {
   const handleSaveLlmSettings = async () => {
     setSaveStatus({ type: 'loading', message: 'Saving configuration...' });
     try {
-      const res = await fetch('/api/settings/llm', {
+      const res = await authFetch('/api/settings/llm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -139,7 +139,7 @@ export const AiAssistantView = () => {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text.trim() })
