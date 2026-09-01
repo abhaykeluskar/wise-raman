@@ -253,15 +253,37 @@ export const TransactionLedgerView = () => {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 pb-12">
       
+      {/* Header Banner */}
+      <div className={`p-5 sm:p-6 rounded-3xl border-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+        <div className="flex items-center gap-3.5">
+          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')}`}>
+            <ListFilter className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-white', 'text-slate-800')}`}>
+                Transaction Ledger
+              </h1>
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/20">
+                {filteredTransactions.length} Transactions
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">
+              Normalized ledger with UPI intelligence, merchant categorization, and audit trail
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 1. Horizontal Bank Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full custom-scrollbar">
+      <div className="flex items-center flex-wrap gap-2 max-w-full">
         <button
           type="button"
           onClick={() => setSelectedBankId('ALL')}
           className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
             selectedBankId === 'ALL'
-              ? style('neu-flat-dark text-[#FF7E67]', 'bg-[#FF7E67] text-white', 'neu-flat-light text-[#4A90E2]', 'bg-[#4A90E2] text-white')
-              : style('text-slate-400 hover:text-slate-200', 'text-slate-600 hover:text-slate-900')
+              ? style('neu-flat-dark text-[#FF7E67] ring-1 ring-orange-500/30', 'bg-[#FF7E67] text-white shadow-md')
+              : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
           }`}
         >
           All Accounts Ledger
@@ -276,8 +298,8 @@ export const TransactionLedgerView = () => {
               onClick={() => setSelectedBankId(b.id)}
               className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
                 isSelected
-                  ? style('neu-flat-dark text-[#FF7E67]', 'bg-[#FF7E67] text-white', 'neu-flat-light text-[#4A90E2]', 'bg-[#4A90E2] text-white')
-                  : style('text-slate-400 hover:text-slate-200', 'text-slate-600 hover:text-slate-900')
+                  ? style('neu-flat-dark text-[#FF7E67] ring-1 ring-orange-500/30', 'bg-[#FF7E67] text-white shadow-md')
+                  : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
               }`}
             >
               {b.name}

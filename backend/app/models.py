@@ -7,6 +7,11 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 
+class AccountVisibility(str, enum.Enum):
+    PRIVATE = "PRIVATE"
+    SHARED = "SHARED"
+    HOUSEHOLD = "HOUSEHOLD"
+
 class AccountClassification(str, enum.Enum):
     ASSET = "ASSET"
     LIABILITY = "LIABILITY"
@@ -41,7 +46,7 @@ class Bank(Base):
     __tablename__ = "banks"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     name = Column(String, unique=True, nullable=False, index=True)
 
     accounts = relationship("Account", back_populates="bank", cascade="all, delete-orphan")
@@ -57,6 +62,7 @@ class Account(Base):
     name = Column(String(100), nullable=False)  # mapped from account_name in spec
     classification = Column(SQLEnum(AccountClassification, name="account_classification_enum"), nullable=False)
     subtype = Column(SQLEnum(AccountSubtype, name="account_subtype_enum"), nullable=False)
+    visibility = Column(SQLEnum(AccountVisibility, name="account_visibility_enum"), nullable=False, default=AccountVisibility.HOUSEHOLD)
     balance = Column(Numeric(14, 2), nullable=False, default=0.00)  # mapped from current_balance in spec
     credit_limit = Column(Numeric(14, 2), nullable=True)
     available_limit = Column(Numeric(14, 2), nullable=True)
@@ -89,6 +95,14 @@ class CreditCardStatement(Base):
     account = relationship("Account", back_populates="statements")
     transactions = relationship("Transaction", back_populates="statement")
 
+class UPITransactionType(str, enum.Enum):
+    P2P = "P2P"
+    P2M = "P2M"
+    SELF_TRANSFER = "SELF_TRANSFER"
+    COLLECT = "COLLECT"
+    AUTOPAY = "AUTOPAY"
+    UNKNOWN = "UNKNOWN"
+
 class Transaction(Base):
     __tablename__ = "transactions"
 
@@ -107,6 +121,18 @@ class Transaction(Base):
     running_balance = Column(Numeric(14, 2), nullable=True)
     reference_id = Column(String(100), nullable=True)
     fingerprint = Column(String(64), nullable=True, index=True)
+    
+    # UPI First-Class Fields
+    upi_type = Column(SQLEnum(UPITransactionType, name="upi_transaction_type_enum"), nullable=True)
+    upi_vpa = Column(String(150), nullable=True)
+    utr_number = Column(String(50), nullable=True, index=True)
+    
+    # Document Provenance Fields
+    source_document_id = Column(UUID(as_uuid=True), nullable=True)
+    source_page_number = Column(Integer, nullable=True)
+    source_coordinates = Column(String(100), nullable=True) # "x,y,w,h"
+    extraction_confidence = Column(Numeric(4, 3), default=1.000)
+
     is_excluded_from_spending = Column(Boolean, default=False)
     verified = Column(Boolean, default=False)
     embedding = Column(Vector(768), nullable=True)
@@ -119,7 +145,7 @@ class Category(Base):
     __tablename__ = "categories"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     name = Column(String, unique=True, nullable=False, index=True)
 
 class CreditCard(Base):
@@ -323,3 +349,285 @@ class AIChatMessage(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     session = relationship("AIChatSession", back_populates="messages")
+
+# --- PHASE 5: Household Financial OS ---
+
+class HouseholdMember(Base):
+    """
+    Family members in Household / Family Mode.
+    """
+    __tablename__ = "household_members"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False)
+    relationship = Column(String(50), nullable=False) # 'SPOUSE', 'PARENT', 'CHILD', 'SELF', 'OTHER'
+    avatar_color = Column(String(20), nullable=True, default="#6366F1")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Loan(Base):
+    """
+    Loans & Mortgages with reducing balance amortization tracking.
+    """
+    __tablename__ = "loans"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
+    loan_name = Column(String(150), nullable=False)
+    loan_type = Column(String(50), nullable=False) # 'HOME_LOAN', 'CAR_LOAN', 'PERSONAL_LOAN', 'EDUCATION_LOAN'
+    lender_name = Column(String(100), nullable=False)
+    principal_amount = Column(Numeric(14, 2), nullable=False)
+    outstanding_balance = Column(Numeric(14, 2), nullable=False)
+    annual_interest_rate = Column(Numeric(5, 2), nullable=False)
+    emi_amount = Column(Numeric(14, 2), nullable=False)
+    tenure_months = Column(Integer, nullable=False)
+    remaining_tenure_months = Column(Integer, nullable=False)
+    start_date = Column(Date, nullable=False)
+    next_due_date = Column(Date, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    account = relationship("Account")
+
+class FinancialGoal(Base):
+    """
+    Financial goals and emergency fund tracking.
+    """
+    __tablename__ = "financial_goals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(150), nullable=False)
+    category = Column(String(50), nullable=False) # 'EMERGENCY_FUND', 'VACATION', 'CAR', 'HOUSE', 'RETIREMENT', 'EDUCATION', 'OTHER'
+    target_amount = Column(Numeric(14, 2), nullable=False)
+    current_amount = Column(Numeric(14, 2), nullable=False, default=0.00)
+    monthly_contribution = Column(Numeric(14, 2), nullable=False, default=0.00)
+    target_date = Column(Date, nullable=True)
+    priority = Column(String(20), default="MEDIUM") # 'HIGH', 'MEDIUM', 'LOW'
+    is_completed = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class InsurancePolicy(Base):
+    """
+    Insurance policies: Health, Term, Life, Vehicle.
+    """
+    __tablename__ = "insurance_policies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    policy_name = Column(String(150), nullable=False)
+    policy_type = Column(String(50), nullable=False) # 'HEALTH', 'LIFE', 'TERM', 'VEHICLE'
+    insurer_name = Column(String(100), nullable=False)
+    policy_number = Column(String(100), nullable=True)
+    sum_insured = Column(Numeric(14, 2), nullable=False)
+    premium_amount = Column(Numeric(14, 2), nullable=False)
+    premium_frequency = Column(String(20), nullable=False, default="ANNUAL") # 'ANNUAL', 'MONTHLY', 'QUARTERLY'
+    renewal_date = Column(Date, nullable=False)
+    covered_members = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class SplitExpense(Base):
+    """
+    Split bill record across friends or household.
+    """
+    __tablename__ = "split_expenses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(150), nullable=False)
+    total_amount = Column(Numeric(14, 2), nullable=False)
+    paid_by_user = Column(Boolean, default=True)
+    payer_name = Column(String(100), nullable=True)
+    expense_date = Column(Date, nullable=False)
+    category = Column(String(50), nullable=True, default="Dining")
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    participants = relationship("SplitParticipant", back_populates="split_expense", cascade="all, delete-orphan")
+
+class SplitParticipant(Base):
+    """
+    Individual person's share in a split expense.
+    """
+    __tablename__ = "split_participants"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    split_expense_id = Column(UUID(as_uuid=True), ForeignKey("split_expenses.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False)
+    share_amount = Column(Numeric(14, 2), nullable=False)
+    is_settled = Column(Boolean, default=False)
+    settled_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    split_expense = relationship("SplitExpense", back_populates="participants")
+
+class Vehicle(Base):
+    """
+    Vehicle profile for tracking ownership costs.
+    """
+    __tablename__ = "vehicles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    vehicle_name = Column(String(100), nullable=False)
+    vehicle_type = Column(String(50), nullable=False, default="CAR") # 'CAR', 'MOTORCYCLE', 'SCOOTER'
+    registration_number = Column(String(30), nullable=True)
+    fuel_type = Column(String(30), nullable=False, default="PETROL") # 'PETROL', 'DIESEL', 'CNG', 'ELECTRIC'
+    odometer_reading = Column(Numeric(10, 1), nullable=True, default=0.0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    expenses = relationship("VehicleExpense", back_populates="vehicle", cascade="all, delete-orphan")
+
+class VehicleExpense(Base):
+    """
+    Vehicle running and maintenance expenses.
+    """
+    __tablename__ = "vehicle_expenses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    expense_type = Column(String(50), nullable=False) # 'FUEL', 'FASTAG', 'SERVICE', 'INSURANCE', 'TOLL', 'PARKING', 'EMI'
+    amount = Column(Numeric(14, 2), nullable=False)
+    expense_date = Column(Date, nullable=False)
+    odometer = Column(Numeric(10, 1), nullable=True)
+    fuel_liters = Column(Numeric(8, 2), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    vehicle = relationship("Vehicle", back_populates="expenses")
+
+class TravelTrip(Base):
+    """
+    Group travel trips (e.g. 'Goa Vacation 2026').
+    """
+    __tablename__ = "travel_trips"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    trip_name = Column(String(150), nullable=False)
+    destination = Column(String(150), nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)
+    budget = Column(Numeric(14, 2), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    expenses = relationship("TripExpense", back_populates="trip", cascade="all, delete-orphan")
+
+class TripExpense(Base):
+    """
+    Expense line item tied to a specific trip.
+    """
+    __tablename__ = "trip_expenses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    trip_id = Column(UUID(as_uuid=True), ForeignKey("travel_trips.id", ondelete="CASCADE"), nullable=False)
+    category = Column(String(50), nullable=False) # 'FLIGHT', 'HOTEL', 'FOOD', 'TRANSPORT', 'ACTIVITIES', 'SHOPPING', 'OTHER'
+    amount = Column(Numeric(14, 2), nullable=False)
+    expense_date = Column(Date, nullable=False)
+    description = Column(String(200), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    trip = relationship("TravelTrip", back_populates="expenses")
+
+
+# ==========================================
+# PHASE 6 & 7: DATA INTEGRITY & AUDITABILITY MODELS
+# ==========================================
+
+class DocumentSource(Base):
+    """
+    Provenance tracking for ingested statements and documents.
+    """
+    __tablename__ = "document_sources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    file_hash_sha256 = Column(String(64), nullable=False, index=True)
+    file_type = Column(String(20), nullable=False) # 'PDF', 'CSV', 'EXCEL'
+    parser_name = Column(String(100), nullable=False)
+    parser_version = Column(String(20), nullable=False)
+    total_pages = Column(Integer, default=1)
+    extracted_rows_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class StatementReconciliation(Base):
+    """
+    Mathematical balance proof: Opening + Credits - Debits = Closing
+    """
+    __tablename__ = "statement_reconciliations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    document_source_id = Column(UUID(as_uuid=True), ForeignKey("document_sources.id", ondelete="CASCADE"), nullable=True)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    opening_balance = Column(Numeric(14, 2), nullable=False)
+    total_credits = Column(Numeric(14, 2), nullable=False)
+    total_debits = Column(Numeric(14, 2), nullable=False)
+    closing_balance = Column(Numeric(14, 2), nullable=False)
+    expected_closing_balance = Column(Numeric(14, 2), nullable=False)
+    discrepancy_amount = Column(Numeric(14, 2), nullable=False, default=0.00)
+    status = Column(String(30), nullable=False, default="VERIFIED") # 'VERIFIED', 'MISMATCH_FLAGGED', 'ADJUSTED'
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserClassificationRule(Base):
+    """
+    Deterministic user classification override rules with priority hierarchy.
+    """
+    __tablename__ = "user_classification_rules"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    match_pattern = Column(String(200), nullable=False) # regex or substring
+    match_field = Column(String(50), default="raw_text") # 'raw_text', 'description', 'vpa'
+    target_category = Column(String(100), nullable=False)
+    target_subcategory = Column(String(100), nullable=True)
+    is_excluded_from_spending = Column(Boolean, default=False)
+    priority = Column(Integer, default=100) # Higher number = evaluated first
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class MandateRecord(Base):
+    """
+    UPI AutoPay, NACH, ECS, and Standing Instruction commitments.
+    """
+    __tablename__ = "mandate_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    biller_name = Column(String(150), nullable=False)
+    mandate_type = Column(String(50), nullable=False) # 'UPI_AUTOPAY', 'NACH', 'ECS', 'STANDING_INSTRUCTION'
+    amount = Column(Numeric(14, 2), nullable=True)
+    frequency = Column(String(30), default="MONTHLY") # 'MONTHLY', 'QUARTERLY', 'ANNUAL'
+    next_debit_date = Column(Date, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class BankFeeRecord(Base):
+    """
+    Detected bank fees (ATM fees, SMS charges, non-maintenance, IMPS/NEFT, card annual fees).
+    """
+    __tablename__ = "bank_fee_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    fee_type = Column(String(50), nullable=False) # 'ATM_FEE', 'SMS_CHARGE', 'MIN_BALANCE_PENALTY', 'CARD_ANNUAL_FEE', 'IMPS_CHARGE', 'OTHER_FEE'
+    amount = Column(Numeric(14, 2), nullable=False)
+    fee_date = Column(Date, nullable=False)
+    raw_narration = Column(Text, nullable=False)
+    is_avoidable = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+

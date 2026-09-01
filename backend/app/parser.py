@@ -666,7 +666,8 @@ def extract_and_categorize_with_light_llm(
     """
     Sends raw statement text to a lightweight Ollama model with strict schema constraints.
     """
-    url = (ollama_url or settings.OLLAMA_URL).rstrip("/")
+    from app.ai import find_working_ollama_url
+    url = (ollama_url or find_working_ollama_url()).rstrip("/")
     llm = model or settings.LLM_MODEL
     schema = StatementExtractionResponse.model_json_schema()
 
@@ -722,7 +723,8 @@ def process_statement_with_lightweight_llm(
     """
     Reads PDF text, breaks it into lightweight chunks, and extracts structured transactions.
     """
-    url = (ollama_url or settings.OLLAMA_URL).rstrip("/")
+    from app.ai import find_working_ollama_url
+    url = (ollama_url or find_working_ollama_url()).rstrip("/")
     llm = model or settings.LLM_MODEL
     ext = filename.lower().split('.')[-1]
     full_text = ""

@@ -52,8 +52,7 @@ def reconcile_transfers(db: Session, user_id: str):
                         from_transaction_id=w.id,
                         to_transaction_id=d.id,
                         amount=w_amt,
-                        transfer_date=w.date,
-                        user_id=user_id
+                        transfer_date=w.date
                     )
                     db.add(link)
                     

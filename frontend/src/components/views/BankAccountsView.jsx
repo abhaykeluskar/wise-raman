@@ -22,6 +22,28 @@ export const BankAccountsView = () => {
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 pb-12">
+      {/* Header Banner */}
+      <div className={`p-5 sm:p-6 rounded-3xl border-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+        <div className="flex items-center gap-3.5">
+          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#10b981]', 'neu-flat-light text-[#10b981]')}`}>
+            <Landmark className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-white', 'text-slate-800')}`}>
+                Bank & Loan Accounts
+              </h1>
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                {assetAccounts.length} Active
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">
+              Savings, current, salary accounts and active bank balances
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Total Assets Summary */}
         <div className={`p-6 rounded-2xl flex flex-col justify-between border-0 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>

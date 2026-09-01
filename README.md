@@ -9,6 +9,12 @@
 
 **WiseRaman** is a local-first, privacy-focused personal finance intelligence platform tailored specifically for Indian banking ecosystems (SBI, HDFC, Axis, Federal Bank, OneCard, UPI, NEFT, IMPS). It parses complex multi-page PDF statements with deterministic balance verification, embeds transaction narrations via `pgvector`, and provides local RAG querying powered by Ollama.
 
+### 🚀 Recent Updates
+- ✅ **PostgreSQL Schema Stability:** Migrated live schemas to natively support UPI attributes, document provenance, and vector embeddings.
+- ✅ **Security Hardened:** Secured destructive developer endpoints and upgraded JWT token security.
+- ✅ **Resilient UI:** Added global React Error Boundaries and removed memory leaks from background file uploads.
+- ✅ **Rule Engine Sync:** Custom categorization rules are now fully synced and persisted via the FastAPI backend.
+
 </div>
 
 ---

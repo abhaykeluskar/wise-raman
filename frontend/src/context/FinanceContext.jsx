@@ -74,22 +74,7 @@ export const FinanceProvider = ({ children }) => {
     return res;
   }, [token, logout]);
 
-  // Hook into global fetch to intercept ALL app fetches for ease (though we also use authFetch here)
-  useEffect(() => {
-    const originalFetch = window.fetch;
-    window.fetch = async (...args) => {
-      let [resource, config] = args;
-      if (typeof resource === 'string' && resource.startsWith('/api') && !resource.startsWith('/api/auth')) {
-        config = config || {};
-        config.headers = { ...config.headers };
-        if (token) config.headers['Authorization'] = `Bearer ${token}`;
-      }
-      const res = await originalFetch(resource, config);
-      if (res.status === 401) logout();
-      return res;
-    };
-    return () => { window.fetch = originalFetch; };
-  }, [token, logout]);
+
 
   const [accounts, setAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -129,29 +114,20 @@ export const FinanceProvider = ({ children }) => {
   // activeUpload: { status: 'idle' | 'uploading' | 'processing_algo' | 'processing_ai' | 'success' | 'error', phase: string, progress: number, engine: string, message: string }
 
   // Rules state
-  const [rules, setRules] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('rules')) || [
-        { id: 1, keyword: "SWIGGY", category: "Dining" },
-        { id: 2, keyword: "ZOMATO", category: "Dining" },
-        { id: 3, keyword: "NETFLIX", category: "Entertainment" }
-      ];
-    } catch {
-      return [];
-    }
-  });
+  const [rules, setRules] = useState([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [accRes, txRes, catRes, cardRes, bankRes, reportRes, stmtRes] = await Promise.all([
+      const [accRes, txRes, catRes, cardRes, bankRes, reportRes, stmtRes, rulesRes] = await Promise.all([
         authFetch('/api/accounts'),
         authFetch('/api/transactions?limit=5000'),
         authFetch('/api/categories'),
         authFetch('/api/cards'),
         authFetch('/api/banks'),
         authFetch('/api/reports/spending'),
-        authFetch('/api/statements')
+        authFetch('/api/statements'),
+        authFetch('/api/rules')
       ]);
 
       if (accRes.ok) setAccounts(await accRes.json());
@@ -161,6 +137,7 @@ export const FinanceProvider = ({ children }) => {
       if (bankRes.ok) setBanks(await bankRes.json());
       if (reportRes.ok) setSpendingReport(await reportRes.json());
       if (stmtRes.ok) setStatements(await stmtRes.json());
+      if (rulesRes.ok) setRules(await rulesRes.json());
       
       // Fetch analytics
       try {
@@ -184,7 +161,7 @@ export const FinanceProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authFetch]);
 
   useEffect(() => {
     fetchData();
@@ -252,7 +229,6 @@ export const FinanceProvider = ({ children }) => {
           method: 'POST',
           body: formData
         });
-        clearInterval(progressTimer);
         
         if (res.ok) {
           successCount++;
@@ -262,9 +238,10 @@ export const FinanceProvider = ({ children }) => {
           lastError = data.detail || 'Upload failed.';
         }
       } catch (err) {
-        clearInterval(progressTimer);
         failCount++;
         lastError = 'Could not connect to server.';
+      } finally {
+        clearInterval(progressTimer);
       }
     }
 
@@ -303,24 +280,35 @@ export const FinanceProvider = ({ children }) => {
   };
 
   // Rule additions
-  const addRule = (keyword, category) => {
-    const newRule = { id: Date.now(), keyword: keyword.trim().toUpperCase(), category };
-    const updated = [...rules, newRule];
-    setRules(updated);
-    localStorage.setItem('rules', JSON.stringify(updated));
+  const addRule = async (keyword, category) => {
+    const res = await authFetch('/api/rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        match_pattern: keyword.trim(),
+        match_field: "raw_text",
+        target_category: category,
+        priority: 100
+      })
+    });
+    if (res.ok) {
+      const newRule = await res.json();
+      setRules(prev => [...prev, newRule]);
+    }
   };
 
-  const deleteRule = (id) => {
-    const updated = rules.filter(r => r.id !== id);
-    setRules(updated);
-    localStorage.setItem('rules', JSON.stringify(updated));
+  const deleteRule = async (id) => {
+    const res = await authFetch(`/api/rules/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      setRules(prev => prev.filter(r => r.id !== id));
+    }
   };
 
   const processedTransactions = useMemo(() => (
     transactions.map(tx => {
       if (tx.verified) return tx;
-      const matchingRule = rules.find(r => tx.description?.toUpperCase().includes(r.keyword.toUpperCase()));
-      if (matchingRule) return { ...tx, category: matchingRule.category };
+      const matchingRule = rules.find(r => tx.description?.toUpperCase().includes(r.match_pattern.toUpperCase()));
+      if (matchingRule) return { ...tx, category: matchingRule.target_category };
       return tx;
     })
   ), [transactions, rules]);

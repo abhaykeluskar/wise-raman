@@ -17,7 +17,10 @@ import {
   MoreHorizontal,
   X,
   LogOut,
-  Terminal
+  Terminal,
+  Home,
+  Activity,
+  ShieldCheck
 } from 'lucide-react';
 
 export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
@@ -27,7 +30,10 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
 
   const desktopNavItems = [
     { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+    { key: 'health', label: 'Health', icon: Activity },
+    { key: 'review', label: 'Review', icon: ShieldCheck },
     { key: 'accounts', label: 'Accounts', icon: Landmark },
+    { key: 'household', label: 'Household', icon: Home },
     { key: 'payslips', label: 'Payslips', icon: Briefcase },
     { key: 'analytics', label: 'Analytics', icon: PieChart },
     { key: 'transactions', label: 'Ledger', icon: ListFilter },
@@ -35,17 +41,18 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
   ];
 
   if (user?.email === 'dev@test.com') {
-    desktopNavItems.push({ key: 'dev-tools', label: 'Dev Tools', icon: Terminal });
+    desktopNavItems.push({ key: 'dev-tools', label: 'Dev', icon: Terminal });
   }
 
   const mobileNavItems = [
     { key: 'dashboard', label: 'Home', icon: BarChart3 },
+    { key: 'health', label: 'Health', icon: Activity },
+    { key: 'review', label: 'Review', icon: ShieldCheck },
     { key: 'transactions', label: 'Ledger', icon: ListFilter },
     { key: 'cards', label: 'Cards', icon: CreditCard },
-    { key: 'analytics', label: 'Stats', icon: PieChart },
   ];
 
-  const moreTabKeys = ['accounts', 'ai-assistant', 'settings', 'payslips', 'dev-tools'];
+  const moreTabKeys = ['accounts', 'household', 'ai-assistant', 'settings', 'payslips', 'dev-tools'];
   const moreIsActive = moreTabKeys.includes(activeTab);
 
   useEffect(() => {
@@ -65,12 +72,12 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
   return (
     <>
     <header className="sticky top-0 z-40 backdrop-blur-md transition-all duration-300">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-2">
         
         <button
           type="button"
           onClick={() => handleTabClick('dashboard')} 
-          className="flex items-center gap-3 cursor-pointer select-none shrink-0 border-0 bg-transparent p-0"
+          className="flex items-center gap-2.5 cursor-pointer select-none shrink-0 border-0 bg-transparent p-0"
           aria-label="WiseRaman home"
         >
           <div className={`p-2.5 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')}`}>
@@ -81,12 +88,12 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
               WiseRaman
             </h1>
             <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-              Financial Intelligence
+              Financial OS
             </span>
           </div>
         </button>
 
-        <nav className={`hidden md:flex items-center gap-1.5 p-1.5 rounded-2xl shrink-0 ${style('neu-inset-dark', 'neu-inset-light')}`} aria-label="Primary">
+        <nav className={`hidden md:flex items-center gap-1 p-1 rounded-2xl shrink-0 ${style('neu-inset-dark', 'neu-inset-light')}`} aria-label="Primary">
           {desktopNavItems.map(item => {
             const Icon = item.icon;
             const isActive = activeTab === item.key;
@@ -95,7 +102,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
                 key={item.key}
                 type="button"
                 onClick={() => onSelectTab(item.key)}
-                className={`flex items-center gap-2 px-3 lg:px-4 py-2 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-2.5 xl:px-3.5 py-2 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer whitespace-nowrap ${
                   isActive
                     ? style(
                         'neu-flat-dark text-[#FF7E67]',
@@ -163,7 +170,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
           <button
             type="button"
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className={`p-2.5 min-h-11 min-w-11 rounded-xl border-0 cursor-pointer transition-all ${style('neu-btn-dark text-slate-300', 'neu-btn-light text-slate-700')}`}
+            className={`p-2.5 flex min-h-11 min-w-11 rounded-xl border-0 cursor-pointer transition-all items-center justify-center ${style('neu-btn-dark text-slate-300', 'neu-btn-light text-slate-700')}`}
             title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
             aria-label="Toggle theme"
           >
@@ -173,7 +180,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
           <button
             type="button"
             onClick={logout}
-            className={`hidden sm:flex p-2.5 min-h-11 min-w-11 rounded-xl border-0 cursor-pointer transition-all ${style('neu-btn-dark text-slate-300', 'neu-btn-light text-slate-700')}`}
+            className={`hidden sm:flex p-2.5 min-h-11 min-w-11 rounded-xl border-0 cursor-pointer transition-all items-center justify-center ${style('neu-btn-dark text-slate-300', 'neu-btn-light text-slate-700')}`}
             title="Log out"
             aria-label="Log out"
           >

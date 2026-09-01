@@ -460,13 +460,13 @@ export const AiAssistantView = () => {
         <div className="flex flex-col gap-3 pt-3 border-t border-slate-800/10">
           
           {/* Prompt Chips */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+          <div className="flex items-center flex-wrap gap-2 pb-1">
             {suggestedPrompts.map((p, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => handleSendMessage(p)}
-                className={`text-xs px-3 py-1.5 rounded-xl whitespace-nowrap border-0 cursor-pointer transition-all font-medium ${style(
+                className={`text-xs px-3 py-1.5 rounded-xl border-0 cursor-pointer transition-all font-medium ${style(
                   'neu-inset-dark text-slate-300 hover:text-white',
                   'neu-inset-light text-slate-700 hover:text-black'
                 )}`}

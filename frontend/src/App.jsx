@@ -17,6 +17,9 @@ import { AnalyticsView } from './components/views/AnalyticsView';
 import { LoginView } from './components/views/LoginView';
 import { RegisterView } from './components/views/RegisterView';
 import { DevToolsView } from './components/views/DevToolsView';
+import { HouseholdOSView } from './components/views/HouseholdOSView';
+import { ReviewCenterView } from './components/views/ReviewCenterView';
+import { FinancialHealthView } from './components/views/FinancialHealthView';
 
 const MainLayout = () => {
   const { theme } = useTheme();
@@ -25,8 +28,13 @@ const MainLayout = () => {
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [authMode, setAuthMode] = useState('login');
-  const isBootstrapping = loading && accounts.length === 0;
-
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  
+  useEffect(() => {
+    if (!loading) setIsInitialLoad(false);
+  }, [loading]);
+  
+  const isBootstrapping = loading && isInitialLoad;
   useEffect(() => {
     if (ledgerFocus?.ts) setActiveTab('transactions');
   }, [ledgerFocus?.ts]);
@@ -77,6 +85,15 @@ const MainLayout = () => {
         {activeTab === 'accounts' && (
           <BankAccountsView />
         )}
+        {activeTab === 'health' && (
+          <FinancialHealthView />
+        )}
+        {activeTab === 'review' && (
+          <ReviewCenterView />
+        )}
+        {activeTab === 'household' && (
+          <HouseholdOSView />
+        )}
         {activeTab === 'payslips' && (
           <PayslipsView />
         )}
@@ -112,14 +129,18 @@ const MainLayout = () => {
   );
 };
 
+import { ErrorBoundary } from './components/atoms/ErrorBoundary';
+
 export default function App() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <FinanceProvider>
-          <MainLayout />
-        </FinanceProvider>
-      </ToastProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <ToastProvider>
+          <FinanceProvider>
+            <MainLayout />
+          </FinanceProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
