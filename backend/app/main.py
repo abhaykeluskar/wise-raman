@@ -1222,7 +1222,6 @@ def purge_database(db: Session = Depends(get_db), current_user = Depends(is_dev_
         db.query(CreditCardStatement).delete()
         db.query(CreditCard).delete()
         db.query(Account).delete()
-        db.query(Bank).delete()
         db.commit()
         return {"status": "success", "message": "All database records purged"}
     except Exception as e:
