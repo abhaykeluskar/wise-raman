@@ -63,30 +63,32 @@ export const ReviewCenterView = () => {
     'Authorization': `Bearer ${token}`
   }), [token]);
 
+  const apiBase = API_BASE_URL || '';
+
   const loadReconciliations = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/reconciliation/dashboard`, { headers: fetchHeaders });
+      const res = await fetch(`${apiBase}/api/reconciliation/dashboard`, { headers: fetchHeaders });
       if (res.ok) setReconciliations(await res.json());
     } catch (e) { console.error(e); }
   };
 
   const loadReviewQueue = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/review-queue`, { headers: fetchHeaders });
+      const res = await fetch(`${apiBase}/api/review-queue`, { headers: fetchHeaders });
       if (res.ok) setReviewQueue(await res.json());
     } catch (e) { console.error(e); }
   };
 
   const loadRules = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/rules`, { headers: fetchHeaders });
+      const res = await fetch(`${apiBase}/api/rules`, { headers: fetchHeaders });
       if (res.ok) setRules(await res.json());
     } catch (e) { console.error(e); }
   };
 
   const loadMandatesAndFees = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/analytics/mandates-fees`, { headers: fetchHeaders });
+      const res = await fetch(`${apiBase}/api/analytics/mandates-fees`, { headers: fetchHeaders });
       if (res.ok) setMandatesAndFees(await res.json());
     } catch (e) { console.error(e); }
   };
@@ -100,11 +102,11 @@ export const ReviewCenterView = () => {
       loadRules(),
       loadMandatesAndFees()
     ]).finally(() => setLoading(false));
-  }, [token]);
+  }, [token, API_BASE_URL]);
 
   const handleResolveItem = async (txId, action, newCat = null, createRule = false) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/review-queue/resolve`, {
+      const res = await fetch(`${apiBase}/api/review-queue/resolve`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({ transaction_id: txId, action, new_category: newCat, create_rule: createRule })
@@ -118,7 +120,7 @@ export const ReviewCenterView = () => {
 
   const handleViewProvenance = async (txId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/provenance/${txId}`, { headers: fetchHeaders });
+      const res = await fetch(`${apiBase}/api/provenance/${txId}`, { headers: fetchHeaders });
       if (res.ok) {
         setSelectedTxProvenance(await res.json());
         setShowProvenanceModal(true);
@@ -130,7 +132,7 @@ export const ReviewCenterView = () => {
     if (!newRule.match_pattern.trim()) return;
     setSimulating(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/rules/test`, {
+      const res = await fetch(`${apiBase}/api/rules/test`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify(newRule)
@@ -143,7 +145,7 @@ export const ReviewCenterView = () => {
   const handleSaveRule = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/rules`, {
+      const res = await fetch(`${apiBase}/api/rules`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify(newRule)
@@ -159,7 +161,7 @@ export const ReviewCenterView = () => {
 
   const handleDeleteRule = async (ruleId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/rules/${ruleId}`, {
+      const res = await fetch(`${apiBase}/api/rules/${ruleId}`, {
         method: 'DELETE',
         headers: fetchHeaders
       });
@@ -174,7 +176,7 @@ export const ReviewCenterView = () => {
     }
     setBackupLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/backup/export-wbr`, {
+      const res = await fetch(`${apiBase}/api/backup/export-wbr`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({ passphrase })
@@ -198,7 +200,7 @@ export const ReviewCenterView = () => {
   const handleTestRestore = async () => {
     if (!backupResult?.wbr_base64 || !passphrase) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/backup/test-restore`, {
+      const res = await fetch(`${apiBase}/api/backup/test-restore`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({ wbr_base64: backupResult.wbr_base64, passphrase })

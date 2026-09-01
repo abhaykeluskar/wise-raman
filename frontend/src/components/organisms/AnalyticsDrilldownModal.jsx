@@ -103,7 +103,7 @@ export const AnalyticsDrilldownModal = ({ category, transactions, onClose, onOpe
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={merchants} layout="vertical" margin={{ top: 0, right: 0, left: 10, bottom: 0 }}>
                       <XAxis type="number" hide />
-                      <YAxis dataKey="name" type="category" stroke="#8d99ae" fontSize={11} tickLine={false} axisLine={false} width={80} />
+                      <YAxis dataKey="name" type="category" stroke="#8d99ae" fontSize={11} tickLine={false} axisLine={false} width={100} />
                       <Tooltip 
                         cursor={{fill: theme === 'dark' ? '#24243E' : '#E2E8F0'}}
                         contentStyle={{ backgroundColor: theme==='dark'?'#0F0F1A':'#FFF', borderColor: theme==='dark'?'#24243E':'#A3B1C6', borderRadius: '8px', color: theme==='dark'?'#EAEAEA':'#333' }}
@@ -157,12 +157,12 @@ export const AnalyticsDrilldownModal = ({ category, transactions, onClose, onOpe
             </div>
             <div className="flex flex-col gap-2">
               {categoryTxs.slice(0, 50).map(tx => (
-                <div key={tx.id} className={`p-3 rounded-xl flex items-center justify-between ${style('bg-[#1a1a2e]', 'bg-white')} border ${style('border-[#24243E]', 'border-slate-200')}`}>
-                  <div className="flex flex-col">
-                    <span className={`text-sm font-bold truncate max-w-[200px] sm:max-w-md ${style('text-slate-200', 'text-slate-800')}`}>{tx.description || 'Unknown'}</span>
+                <div key={tx.id} className={`p-3 rounded-xl flex items-center justify-between gap-3 ${style('bg-[#1a1a2e]', 'bg-white')} border ${style('border-[#24243E]', 'border-slate-200')}`}>
+                  <div className="flex flex-col min-w-0">
+                    <span className={`text-sm font-bold truncate ${style('text-slate-200', 'text-slate-800')}`}>{tx.description || 'Unknown'}</span>
                     <span className="text-xs text-slate-500">{new Date(tx.date).toLocaleDateString()}</span>
                   </div>
-                  <span className={`text-sm font-black ${parseFloat(tx.amount) > 0 ? 'text-emerald-500' : style('text-slate-300', 'text-slate-700')}`}>
+                  <span className={`text-sm font-black whitespace-nowrap shrink-0 ${parseFloat(tx.amount) > 0 ? 'text-emerald-500' : style('text-slate-300', 'text-slate-700')}`}>
                     {parseFloat(tx.amount) > 0 ? '+' : '-'}₹{Math.abs(parseFloat(tx.amount)).toLocaleString()}
                   </span>
                 </div>

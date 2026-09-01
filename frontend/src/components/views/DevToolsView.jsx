@@ -57,7 +57,7 @@ export const DevToolsView = () => {
           </h3>
         </div>
         
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex flex-col">
             <span className="text-xs font-bold">Purge All Data</span>
             <span className="text-xs text-slate-400 font-normal">Wipe out all user data and reset the database</span>
@@ -68,6 +68,7 @@ export const DevToolsView = () => {
             icon={Trash2} 
             onClick={handlePurgeAll}
             disabled={isPurging}
+            className="shrink-0"
           >
             {isPurging ? 'Purging...' : 'Purge All Database Data'}
           </Button>

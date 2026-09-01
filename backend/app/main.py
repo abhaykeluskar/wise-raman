@@ -1872,7 +1872,13 @@ def get_household(db: Session = Depends(get_db), current_user = Depends(get_curr
 @app.get("/api/household/members")
 def get_household_members(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     from app.models import HouseholdMember
-    return db.query(HouseholdMember).filter(HouseholdMember.user_id == current_user.id).all()
+    members = db.query(HouseholdMember).filter(HouseholdMember.user_id == current_user.id).all()
+    return [{
+        "id": str(m.id),
+        "name": m.name,
+        "relationship": m.relationship,
+        "avatar_color": m.avatar_color
+    } for m in members]
 
 @app.post("/api/household/members")
 def add_household_member(data: HouseholdMemberCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
@@ -1886,7 +1892,12 @@ def add_household_member(data: HouseholdMemberCreate, db: Session = Depends(get_
     db.add(m)
     db.commit()
     db.refresh(m)
-    return m
+    return {
+        "id": str(m.id),
+        "name": m.name,
+        "relationship": m.relationship,
+        "avatar_color": m.avatar_color
+    }
 
 @app.delete("/api/household/members/{member_id}")
 def delete_household_member(member_id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user)):

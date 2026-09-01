@@ -28,12 +28,12 @@ export const SubscriptionTrackerCard = () => {
         <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-1 custom-scrollbar">
           {subscriptions.map((sub, idx) => (
             <div key={idx} className={`p-4 rounded-xl flex items-center justify-between border-0 transition-all ${style('neu-inset-dark', 'neu-inset-light')}`}>
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${style('bg-slate-800/40 text-purple-400', 'bg-slate-200 text-purple-600')}`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`p-2 rounded-lg shrink-0 ${style('bg-slate-800/40 text-purple-400', 'bg-slate-200 text-purple-600')}`}>
                   <CheckCircle2 className="h-4 w-4" />
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold">{sub.name}</span>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-sm font-bold truncate">{sub.name}</span>
                   <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider flex items-center gap-1">
                     {sub.frequency} • Next: {new Date(sub.next_expected_date).toLocaleDateString()}
                   </span>

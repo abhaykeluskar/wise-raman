@@ -388,7 +388,7 @@ export const TransactionLedgerView = () => {
           />
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
           <select
             value={flowFilter}
             onChange={e => setFlowFilter(e.target.value)}
@@ -630,12 +630,12 @@ export const TransactionLedgerView = () => {
 
               return (
                 <div key={tx.id} className={`p-4 rounded-xl flex flex-col gap-2 ${style('bg-slate-800/30', 'bg-slate-50')}`}>
-                  <div className="flex justify-between items-start">
-                    <div className="flex flex-col">
-                      <span className={`font-bold text-sm truncate max-w-[200px] ${style('text-slate-100', 'text-slate-800')}`} title={tx.description}>{tx.description}</span>
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex flex-col min-w-0">
+                      <span className={`font-bold text-sm truncate ${style('text-slate-100', 'text-slate-800')}`} title={tx.description}>{tx.description}</span>
                       <span className="text-xs text-slate-400">{formatDate(tx.date, 'short')} &bull; {acc?.name || 'Bank Account'}</span>
                     </div>
-                    <span className={`font-extrabold text-sm ${isIncome ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span className={`font-extrabold text-sm whitespace-nowrap shrink-0 ${isIncome ? 'text-emerald-400' : 'text-red-400'}`}>
                       {isIncome ? `+${formatCurrency(amt)}` : `-${formatCurrency(Math.abs(amt))}`}
                     </span>
                   </div>

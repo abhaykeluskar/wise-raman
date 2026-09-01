@@ -125,16 +125,18 @@ export const HouseholdOSView = () => {
   }), [token]);
 
   // Loaders
+  const apiBase = API_BASE_URL || '';
+
   const loadHousehold = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/household/dashboard`, { headers: fetchHeaders });
+      const res = await fetch(`${apiBase}/api/household/dashboard`, { headers: fetchHeaders });
       if (res.ok) setHouseholdData(await res.json());
     } catch (e) { console.error(e); }
   };
 
   const loadLoans = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/loans`, { headers: fetchHeaders });
+      const res = await fetch(`${apiBase}/api/loans`, { headers: fetchHeaders });
       if (res.ok) {
         const data = await res.json();
         setLoans(data);
@@ -148,8 +150,8 @@ export const HouseholdOSView = () => {
   const loadGoals = async () => {
     try {
       const [gRes, efRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/goals`, { headers: fetchHeaders }),
-        fetch(`${API_BASE_URL}/api/goals/emergency-fund`, { headers: fetchHeaders })
+        fetch(`${apiBase}/api/goals`, { headers: fetchHeaders }),
+        fetch(`${apiBase}/api/goals/emergency-fund`, { headers: fetchHeaders })
       ]);
       if (gRes.ok) setGoals(await gRes.json());
       if (efRes.ok) setEmergencyFund(await efRes.json());
@@ -158,14 +160,14 @@ export const HouseholdOSView = () => {
 
   const loadSplits = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/splits`, { headers: fetchHeaders });
+      const res = await fetch(`${apiBase}/api/splits`, { headers: fetchHeaders });
       if (res.ok) setSplitsData(await res.json());
     } catch (e) { console.error(e); }
   };
 
   const loadInsurance = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/insurance`, { headers: fetchHeaders });
+      const res = await fetch(`${apiBase}/api/insurance`, { headers: fetchHeaders });
       if (res.ok) setInsuranceData(await res.json());
     } catch (e) { console.error(e); }
   };
@@ -173,8 +175,8 @@ export const HouseholdOSView = () => {
   const loadVehiclesAndTrips = async () => {
     try {
       const [vRes, tRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/vehicles`, { headers: fetchHeaders }),
-        fetch(`${API_BASE_URL}/api/trips`, { headers: fetchHeaders })
+        fetch(`${apiBase}/api/vehicles`, { headers: fetchHeaders }),
+        fetch(`${apiBase}/api/trips`, { headers: fetchHeaders })
       ]);
       if (vRes.ok) setVehicles(await vRes.json());
       if (tRes.ok) setTrips(await tRes.json());
@@ -192,24 +194,24 @@ export const HouseholdOSView = () => {
       loadInsurance(),
       loadVehiclesAndTrips()
     ]).finally(() => setLoading(false));
-  }, [token]);
+  }, [token, API_BASE_URL]);
 
   useEffect(() => {
     if (!selectedLoan || !token) return;
     const fetchAmortization = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/loans/${selectedLoan.id}/amortization`, { headers: fetchHeaders });
+        const res = await fetch(`${apiBase}/api/loans/${selectedLoan.id}/amortization`, { headers: fetchHeaders });
         if (res.ok) setAmortization(await res.json());
       } catch (e) { console.error(e); }
     };
     fetchAmortization();
     runPrepaySim(prepayLumpSum, prepayExtraEmi);
-  }, [selectedLoan]);
+  }, [selectedLoan, token, API_BASE_URL]);
 
   const runPrepaySim = async (lump, extra) => {
     if (!selectedLoan || !token) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/loans/${selectedLoan.id}/prepayment-sim`, {
+      const res = await fetch(`${apiBase}/api/loans/${selectedLoan.id}/prepayment-sim`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({ lump_sum: parseFloat(lump || 0), extra_monthly_emi: parseFloat(extra || 0) })
@@ -222,7 +224,7 @@ export const HouseholdOSView = () => {
   const handleAddMember = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/household/members`, {
+      const res = await fetch(`${apiBase}/api/household/members`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify(newMember)
@@ -235,10 +237,22 @@ export const HouseholdOSView = () => {
     } catch (err) { console.error(err); }
   };
 
+  const handleDeleteMember = async (memberId) => {
+    try {
+      const res = await fetch(`${apiBase}/api/household/members/${memberId}`, {
+        method: 'DELETE',
+        headers: fetchHeaders
+      });
+      if (res.ok) {
+        loadHousehold();
+      }
+    } catch (err) { console.error(err); }
+  };
+
   const handleAddLoan = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/loans`, {
+      const res = await fetch(`${apiBase}/api/loans`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({
@@ -259,7 +273,7 @@ export const HouseholdOSView = () => {
   const handleAddGoal = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/goals`, {
+      const res = await fetch(`${apiBase}/api/goals`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({
@@ -288,7 +302,7 @@ export const HouseholdOSView = () => {
         share_amount: perPerson
       }));
 
-      const res = await fetch(`${API_BASE_URL}/api/splits`, {
+      const res = await fetch(`${apiBase}/api/splits`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({
@@ -311,7 +325,7 @@ export const HouseholdOSView = () => {
 
   const handleSettleParticipant = async (participantId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/splits/participant/${participantId}/settle`, {
+      const res = await fetch(`${apiBase}/api/splits/participant/${participantId}/settle`, {
         method: 'POST',
         headers: fetchHeaders
       });
@@ -322,7 +336,7 @@ export const HouseholdOSView = () => {
   const handleAddInsurance = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/insurance`, {
+      const res = await fetch(`${apiBase}/api/insurance`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({
@@ -341,7 +355,7 @@ export const HouseholdOSView = () => {
   const handleAddVehicle = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/vehicles`, {
+      const res = await fetch(`${apiBase}/api/vehicles`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({
@@ -359,7 +373,7 @@ export const HouseholdOSView = () => {
   const handleAddTrip = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/trips`, {
+      const res = await fetch(`${apiBase}/api/trips`, {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({
@@ -545,6 +559,14 @@ export const HouseholdOSView = () => {
                         <div className="text-[10px] uppercase font-bold text-slate-400">{m.relationship}</div>
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMember(m.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-400 rounded-xl transition-colors border-0 bg-transparent cursor-pointer"
+                      title="Remove member"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -713,7 +735,7 @@ export const HouseholdOSView = () => {
                   <span className="text-xs text-slate-400 font-semibold">Rate: {selectedLoan.annual_interest_rate}% p.a.</span>
                 </div>
 
-                <div className="max-h-80 overflow-y-auto rounded-2xl custom-scrollbar">
+                <div className="max-h-80 overflow-y-auto overflow-x-auto rounded-2xl custom-scrollbar">
                   <table className="w-full text-left text-xs">
                     <thead className={`sticky top-0 ${style('bg-[#1E1E2E] text-slate-400', 'bg-slate-100 text-slate-600')}`}>
                       <tr>
@@ -772,7 +794,7 @@ export const HouseholdOSView = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-6 text-right">
+              <div className="flex items-center gap-6 text-right flex-wrap justify-end">
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-400">Current Liquid Reserve</div>
                   <div className="text-lg font-black text-emerald-400">{formatCurrency(emergencyFund.liquid_reserves)}</div>

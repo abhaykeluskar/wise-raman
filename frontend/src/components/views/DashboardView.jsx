@@ -18,7 +18,7 @@ export const DashboardView = ({ onSelectCard }) => {
       <HeroAlertRibbon />
 
       {/* 2. Top Row: Credit Cards Summary (Liabilities) & Net Worth */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <CreditCardSummaryCard onSelectCard={onSelectCard} />
         <NetWorthDashboardCard />
       </div>
@@ -31,7 +31,7 @@ export const DashboardView = ({ onSelectCard }) => {
       </div>
 
       {/* 4. Bottom Row: Current Month Velocity & Category Distribution Donut */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <MonthVelocityCard />
         <CategoryDonutCard />
       </div>

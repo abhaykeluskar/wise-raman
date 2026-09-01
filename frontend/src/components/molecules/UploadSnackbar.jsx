@@ -48,8 +48,8 @@ export const UploadSnackbar = () => {
 
         {/* Status Line / Phase */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between text-xxs font-semibold">
-            <span className={`truncate max-w-[280px] ${isSuccess ? 'text-emerald-400' : isError ? 'text-red-400' : isAi ? 'text-purple-300' : style('text-slate-300', 'text-slate-600')}`}>
+          <div className="flex items-center justify-between text-xxs font-semibold gap-2">
+            <span className={`min-w-0 flex-1 truncate ${isSuccess ? 'text-emerald-400' : isError ? 'text-red-400' : isAi ? 'text-purple-300' : style('text-slate-300', 'text-slate-600')}`}>
               {activeUpload.phase}
             </span>
             {isLoading && (

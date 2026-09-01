@@ -313,8 +313,11 @@ export const FinanceProvider = ({ children }) => {
     })
   ), [transactions, rules]);
 
+  const API_BASE_URL = '';
+
   return (
     <FinanceContext.Provider value={{
+      API_BASE_URL,
       user,
       token,
       login,

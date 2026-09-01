@@ -57,17 +57,17 @@ export const TelemetryTerminal = ({
       <div className="p-3 px-4 bg-[#0A0C12] border-b border-slate-800/80 flex items-center justify-between">
         <div 
           onClick={() => isCollapsible && setIsExpanded(!isExpanded)} 
-          className="flex items-center gap-2 cursor-pointer select-none"
+          className="flex items-center gap-2 cursor-pointer select-none min-w-0"
         >
-          <Terminal className="h-4 w-4 text-emerald-400" />
-          <span className="font-bold text-slate-200 tracking-wider text-xs uppercase">
+          <Terminal className="h-4 w-4 text-emerald-400 shrink-0" />
+          <span className="font-bold text-slate-200 tracking-wider text-xs uppercase truncate">
             {title}
           </span>
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shrink-0">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
             LIVE SSE
           </span>
-          <span className="text-xs text-slate-500 hidden sm:inline">
+          <span className="text-xs text-slate-500 hidden sm:inline shrink-0">
             ({logs.length} events)
           </span>
         </div>

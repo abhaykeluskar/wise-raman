@@ -83,11 +83,11 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
           <div className={`p-2.5 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')}`}>
             <Wallet className="h-5 w-5" />
           </div>
-          <div className="hidden sm:block text-left">
+          <div className="text-left">
             <h1 className="text-base font-black tracking-tight leading-none">
               WiseRaman
             </h1>
-            <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+            <span className="hidden sm:block text-[10px] font-bold text-slate-400 tracking-wider uppercase">
               Financial OS
             </span>
           </div>
@@ -194,7 +194,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
       {moreOpen && (
         <button
           type="button"
-          className="md:hidden fixed inset-0 z-40 bg-black/45 border-0 cursor-pointer"
+          className="md:hidden fixed inset-0 z-50 bg-black/45 border-0 cursor-pointer"
           aria-label="Close menu"
           onClick={() => setMoreOpen(false)}
         />

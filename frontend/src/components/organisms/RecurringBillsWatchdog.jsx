@@ -84,15 +84,15 @@ export const RecurringBillsWatchdog = ({ transactions, onSelectMerchant }) => {
               onClick={() => onSelectMerchant && onSelectMerchant(bill.merchant)}
               className={`p-3 rounded-xl flex items-center justify-between ${style('bg-[#1a1a2e]', 'bg-slate-100')} ${onSelectMerchant ? 'cursor-pointer hover:brightness-110' : ''}`}
             >
-              <div className="flex flex-col">
-                <span className={`text-sm font-bold truncate max-w-[150px] ${style('text-slate-200', 'text-slate-800')}`}>
+              <div className="flex flex-col min-w-0">
+                <span className={`text-sm font-bold truncate ${style('text-slate-200', 'text-slate-800')}`}>
                   {bill.merchant}
                 </span>
                 <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
                   {bill.daysUntil < 0 ? `Was due ${Math.abs(bill.daysUntil)}d ago` : `Due in ${bill.daysUntil} days`}
                 </span>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 shrink-0">
                 <span className={`text-sm font-black ${isDueSoon ? 'text-red-500' : style('text-slate-300', 'text-slate-700')}`}>
                   ₹{bill.amount.toLocaleString()}
                 </span>

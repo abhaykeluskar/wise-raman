@@ -491,7 +491,7 @@ export const AnalyticsView = () => {
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Average Daily Burn Rate</h3>
           </div>
           
-          <div className={`text-4xl font-black ${style('text-white', 'text-slate-800')}`}>
+          <div className={`text-3xl lg:text-4xl font-black ${style('text-white', 'text-slate-800')}`}>
             ₹{velocityMetrics.dailyBurnRate.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             <span className="text-sm text-slate-500 font-medium ml-2">/ day</span>
           </div>

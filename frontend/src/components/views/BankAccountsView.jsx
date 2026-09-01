@@ -51,7 +51,7 @@ export const BankAccountsView = () => {
             <PiggyBank className={`h-5 w-5 ${style('text-[#10b981]', 'text-[#10b981]')}`} />
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">Total Liquid Assets</h3>
           </div>
-          <h2 className={`text-4xl font-extrabold ${style('text-white', 'text-slate-800')}`}>
+          <h2 className={`text-3xl sm:text-4xl font-extrabold ${style('text-white', 'text-slate-800')}`}>
             {formatCurrency(totalAssets)}
           </h2>
           <p className="text-xs text-slate-500 mt-2">Across {assetAccounts.length} savings/current accounts</p>
@@ -63,7 +63,7 @@ export const BankAccountsView = () => {
             <Receipt className={`h-5 w-5 ${style('text-[#ef4444]', 'text-[#ef4444]')}`} />
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">Total Outstanding Loans</h3>
           </div>
-          <h2 className={`text-4xl font-extrabold ${style('text-white', 'text-slate-800')}`}>
+          <h2 className={`text-3xl sm:text-4xl font-extrabold ${style('text-white', 'text-slate-800')}`}>
             {formatCurrency(totalLoans)}
           </h2>
           <p className="text-xs text-slate-500 mt-2">Across {loanAccounts.length} active loan accounts</p>
@@ -113,12 +113,12 @@ export const BankAccountsView = () => {
                 {formatCurrency(Math.abs(acc.balance || 0))}
               </span>
             </div>
-            <div className="flex justify-between items-center bg-black/10 rounded-lg p-3">
-              <div className="flex flex-col">
+            <div className="flex justify-between items-center bg-black/10 rounded-lg p-3 gap-3">
+              <div className="flex flex-col min-w-0">
                 <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Loan Plan</span>
-                <span className={`text-xs font-medium ${style('text-slate-200', 'text-slate-700')}`}>{acc.name}</span>
+                <span className={`text-xs font-medium truncate ${style('text-slate-200', 'text-slate-700')}`}>{acc.name}</span>
               </div>
-              <div className="flex flex-col text-right">
+              <div className="flex flex-col text-right shrink-0">
                 <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Current EMI</span>
                 <span className={`text-sm font-bold ${style('text-[#EAEAEA]', 'text-slate-800')}`}>{formatCurrency(acc.monthly_cap || 0)}</span>
               </div>
