@@ -19,15 +19,22 @@ export const Button = ({
     switch (variant) {
       case 'primary':
         return style(
-          'neu-btn-dark text-[#FF7E67] font-bold hover:brightness-110 active:brightness-95',
-          'bg-[#FF7E67] text-white',
-          'neu-btn-light text-[#4A90E2] font-bold hover:brightness-105 active:brightness-95',
-          'bg-[#4A90E2] text-white'
+          'neu-btn-dark text-[#5EEAD4] font-bold hover:brightness-110 active:brightness-95',
+          'bg-[#5EEAD4] text-[#0A0E14]',
+          'neu-btn-light text-[#0F766E] font-bold hover:brightness-105 active:brightness-95',
+          'bg-[#0F766E] text-white'
+        );
+      case 'ai':
+        return style(
+          'neu-btn-dark text-[#A78BFA] font-bold hover:brightness-110 active:brightness-95',
+          'bg-[#A78BFA] text-[#0A0E14]',
+          'neu-btn-light text-[#7C3AED] font-bold hover:brightness-105 active:brightness-95',
+          'bg-[#7C3AED] text-white'
         );
       case 'secondary':
         return style(
           'neu-btn-dark text-slate-300 font-medium',
-          'bg-slate-800 text-slate-200',
+          'bg-[#19202A] text-slate-200',
           'neu-btn-light text-slate-700 font-medium',
           'bg-slate-200 text-slate-700'
         );

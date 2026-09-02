@@ -4,10 +4,82 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
+/* ========================================================================= */
+/* --- WiseRaman Aurora Design Tokens ---                                    */
+/* ========================================================================= */
+
+:root {
+  /* Core Surfaces */
+  --wr-bg: #0E1117;
+  --wr-surface: #151A22;
+  --wr-surface-raised: #19202A;
+  --wr-surface-inset: #0A0E14;
+
+  /* Brand: Arctic Mint */
+  --wr-brand: #5EEAD4;
+  --wr-brand-strong: #2DD4BF;
+  --wr-brand-muted: rgba(94, 234, 212, 0.12);
+
+  /* Intelligence: Electric Violet */
+  --wr-ai: #A78BFA;
+  --wr-ai-strong: #8B5CF6;
+  --wr-ai-muted: rgba(167, 139, 250, 0.12);
+
+  /* Financial Semantics */
+  --wr-positive: #34D399;
+  --wr-negative: #F87171;
+  --wr-warning: #FBBF24;
+  --wr-info: #60A5FA;
+
+  /* Typography */
+  --wr-text: #F4F7FA;
+  --wr-text-secondary: #CBD5E1;
+  --wr-text-muted: #94A3B8;
+
+  /* Structure */
+  --wr-border: #27313D;
+  --wr-border-subtle: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="light"],
+html.light,
+html:not(.dark) {
+  /* Core Surfaces */
+  --wr-bg: #F4F7F9;
+  --wr-surface: #FFFFFF;
+  --wr-surface-raised: #F9FBFC;
+  --wr-surface-inset: #E8EEF2;
+
+  /* Brand: Deep Teal */
+  --wr-brand: #0F766E;
+  --wr-brand-strong: #0D9488;
+  --wr-brand-muted: rgba(15, 118, 110, 0.10);
+
+  /* Intelligence: Deep Violet */
+  --wr-ai: #7C3AED;
+  --wr-ai-strong: #6D28D9;
+  --wr-ai-muted: rgba(124, 58, 237, 0.10);
+
+  /* Financial Semantics */
+  --wr-positive: #059669;
+  --wr-negative: #DC2626;
+  --wr-warning: #D97706;
+  --wr-info: #2563EB;
+
+  /* Typography */
+  --wr-text: #17202A;
+  --wr-text-secondary: #475569;
+  --wr-text-muted: #64748B;
+
+  /* Structure */
+  --wr-border: #D8E0E7;
+  --wr-border-subtle: rgba(15, 23, 42, 0.06);
+}
+
 /* Custom styled scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(141, 153, 174, 0.4) transparent;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -20,17 +92,17 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(141, 153, 174, 0.4);
+  background-color: rgba(148, 163, 184, 0.3);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(141, 153, 174, 0.7);
+  background-color: rgba(148, 163, 184, 0.6);
 }
 
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(141, 153, 174, 0.4) transparent;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -43,25 +115,35 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(141, 153, 174, 0.4);
+  background-color: rgba(148, 163, 184, 0.3);
   border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(141, 153, 174, 0.7);
+  background-color: rgba(148, 163, 184, 0.6);
 }
 
+/* Base Body and Ambient Aurora Canvas */
 html.dark,
 html.dark body {
-  background-color: #181828;
-  color: #EAEAEA;
+  background-color: #0E1117;
+  background-image: 
+    radial-gradient(circle at 85% 10%, rgba(167, 139, 250, 0.05), transparent 32%),
+    radial-gradient(circle at 10% 80%, rgba(94, 234, 212, 0.035), transparent 28%);
+  background-attachment: fixed;
+  color: #F4F7FA;
 }
 
 html.light,
+html.light body,
 html:not(.dark),
 html:not(.dark) body {
-  background-color: #E0E5EC;
-  color: #2D3436;
+  background-color: #F4F7F9;
+  background-image: 
+    radial-gradient(circle at 85% 10%, rgba(124, 58, 237, 0.025), transparent 32%),
+    radial-gradient(circle at 10% 80%, rgba(15, 118, 110, 0.02), transparent 28%);
+  background-attachment: fixed;
+  color: #17202A;
 }
 
 body {
@@ -79,10 +161,11 @@ body {
   min-height: 100dvh;
 }
 
+/* Inputs & Form Controls */
 html.dark input,
 html.dark textarea,
 html.dark select {
-  color: #EAEAEA;
+  color: #F4F7FA;
   color-scheme: dark;
 }
 
@@ -92,57 +175,60 @@ html.light select,
 html:not(.dark) input,
 html:not(.dark) textarea,
 html:not(.dark) select {
-  color: #2D3436;
+  color: #17202A;
   color-scheme: light;
 }
 
 html.dark option {
-  background-color: #1A1A2E;
-  color: #EAEAEA;
+  background-color: #151A22;
+  color: #F4F7FA;
 }
 
 html.light option,
 html:not(.dark) option {
   background-color: #FFFFFF;
-  color: #2D3436;
+  color: #17202A;
 }
 
 html.dark input::placeholder,
 html.dark textarea::placeholder {
-  color: #8d99ae;
-  opacity: 1;
+  color: #94A3B8;
+  opacity: 0.8;
 }
 
 html.dark input:-webkit-autofill,
 html.dark textarea:-webkit-autofill,
 html.dark select:-webkit-autofill {
-  -webkit-text-fill-color: #EAEAEA;
-  caret-color: #EAEAEA;
-  box-shadow: 0 0 0 1000px #0F0F1A inset;
+  -webkit-text-fill-color: #F4F7FA;
+  caret-color: #5EEAD4;
+  box-shadow: 0 0 0 1000px #0A0E14 inset;
   transition: background-color 9999s ease-out;
 }
 
+/* Recharts Tooltips & Legends */
 html.dark .recharts-legend-item-text,
 html.dark .recharts-tooltip-item,
 html.dark .recharts-tooltip-label {
-  color: #EAEAEA !important;
-  fill: #EAEAEA !important;
+  color: #F4F7FA !important;
+  fill: #F4F7FA !important;
 }
 
 html.light .recharts-legend-item-text,
 html:not(.dark) .recharts-legend-item-text {
-  color: #2D3436 !important;
-  fill: #2D3436 !important;
+  color: #17202A !important;
+  fill: #17202A !important;
 }
 
 html.dark .recharts-default-tooltip {
-  background: #0F0F1A !important;
-  border-color: #24243E !important;
-  color: #EAEAEA !important;
+  background: #151A22 !important;
+  border-color: #27313D !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+  color: #F4F7FA !important;
+  border-radius: 12px !important;
 }
 
 html.dark .recharts-text {
-  fill: #8d99ae;
+  fill: #94A3B8;
 }
 
 .pb-safe {
@@ -169,77 +255,89 @@ html.dark .recharts-text {
 }
 
 /* ========================================================================= */
-/* --- Neumorphic Style Specifications ---                                   */
+/* --- Modernized Soft UI / Neumorphic Specifications ---                    */
 /* ========================================================================= */
 
-/* --- Dark Mode (#1A1A2E Base) --- */
+/* --- Dark Mode (#151A22 Base, #0A0E14 Inset, #19202A Raised) --- */
 .neu-bg-dark {
-  background-color: #1A1A2E;
-  color: #EAEAEA;
+  background-color: #151A22;
+  color: #F4F7FA;
 }
 
 .neu-flat-dark {
-  background-color: #1A1A2E;
-  box-shadow: 6px 6px 14px #0F0F1A, -6px -6px 14px #24243E;
-  border: 1px solid rgba(255, 255, 255, 0.015);
+  background-color: #151A22;
+  box-shadow: 8px 8px 20px rgba(0, 0, 0, 0.32), -6px -6px 16px rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.neu-raised-dark {
+  background-color: #19202A;
+  box-shadow: 10px 10px 24px rgba(0, 0, 0, 0.38), -8px -8px 20px rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .neu-inset-dark {
-  background-color: #0F0F1A;
-  box-shadow: inset 4px 4px 9px #07070d, inset -4px -4px 9px #1f1f35;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  background-color: #0A0E14;
+  box-shadow: inset 4px 4px 10px rgba(0, 0, 0, 0.45), inset -4px -4px 10px rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.03);
 }
 
 .neu-btn-dark {
-  background-color: #1A1A2E;
-  box-shadow: 5px 5px 12px #0F0F1A, -5px -5px 12px #24243E;
+  background-color: #151A22;
+  box-shadow: 5px 5px 14px rgba(0, 0, 0, 0.3), -4px -4px 12px rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.04);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  color: #EAEAEA;
+  color: #F4F7FA;
 }
 
 .neu-btn-dark:hover {
-  box-shadow: 2px 2px 6px #0F0F1A, -2px -2px 6px #24243E;
-  color: #FF7E67;
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.25), -2px -2px 8px rgba(255, 255, 255, 0.035);
+  color: #5EEAD4;
 }
 
 .neu-btn-dark:active {
-  box-shadow: inset 3px 3px 7px #0F0F1A, inset -3px -3px 7px #24243E;
-  color: #FF7E67;
+  box-shadow: inset 3px 3px 8px rgba(0, 0, 0, 0.5), inset -3px -3px 8px rgba(255, 255, 255, 0.02);
+  color: #5EEAD4;
 }
 
-/* --- Light Mode (#E0E5EC Base) --- */
+/* --- Light Mode (#FFFFFF Base, #E8EEF2 Inset, #F9FBFC Raised) --- */
 .neu-bg-light {
-  background-color: #E0E5EC;
-  color: #2D3436;
+  background-color: #FFFFFF;
+  color: #17202A;
 }
 
 .neu-flat-light {
-  background-color: #E0E5EC;
-  box-shadow: 6px 6px 14px #A3B1C6, -6px -6px 14px #FFFFFF;
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background-color: #FFFFFF;
+  box-shadow: 8px 8px 18px rgba(148, 163, 184, 0.22), -6px -6px 16px rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(216, 224, 231, 0.6);
+}
+
+.neu-raised-light {
+  background-color: #F9FBFC;
+  box-shadow: 10px 10px 22px rgba(148, 163, 184, 0.25), -8px -8px 20px rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(216, 224, 231, 0.8);
 }
 
 .neu-inset-light {
-  background-color: #FFFFFF;
-  box-shadow: inset 4px 4px 9px #A3B1C6, inset -4px -4px 9px #FFFFFF;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: #E8EEF2;
+  box-shadow: inset 4px 4px 9px rgba(148, 163, 184, 0.22), inset -4px -4px 9px #FFFFFF;
+  border: 1px solid rgba(216, 224, 231, 0.4);
 }
 
 .neu-btn-light {
-  background-color: #E0E5EC;
-  box-shadow: 5px 5px 12px #A3B1C6, -5px -5px 12px #FFFFFF;
+  background-color: #F9FBFC;
+  box-shadow: 5px 5px 14px rgba(148, 163, 184, 0.18), -4px -4px 12px rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(216, 224, 231, 0.5);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  color: #2D3436;
+  color: #17202A;
 }
 
 .neu-btn-light:hover {
-  box-shadow: 2px 2px 6px #A3B1C6, -2px -2px 6px #FFFFFF;
-  color: #4A90E2;
+  box-shadow: 2px 2px 8px rgba(148, 163, 184, 0.25), -2px -2px 8px rgba(255, 255, 255, 0.9);
+  color: #0F766E;
 }
 
 .neu-btn-light:active {
-  box-shadow: inset 3px 3px 7px #A3B1C6, inset -3px -3px 7px #FFFFFF;
-  color: #4A90E2;
+  box-shadow: inset 3px 3px 7px rgba(148, 163, 184, 0.3), inset -3px -3px 7px #FFFFFF;
+  color: #0F766E;
 }
-
-

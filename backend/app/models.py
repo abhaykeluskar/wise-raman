@@ -716,3 +716,24 @@ class SystemMetadata(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class CustomSubscription(Base):
+    """
+    User-managed, offline, or custom recurring subscriptions.
+    """
+    __tablename__ = "custom_subscriptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(150), nullable=False)
+    category = Column(String(50), default="Digital & Streaming") # 'OTT & Video', 'Music & Audio', 'AI & Dev Tools', 'Fitness & Wellness', 'Cloud & Storage', 'Utilities', 'Other'
+    amount = Column(Numeric(14, 2), nullable=False)
+    frequency = Column(String(30), default="MONTHLY") # 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'
+    billing_day = Column(Integer, default=1)
+    next_renewal_date = Column(Date, nullable=True)
+    payment_method = Column(String(100), nullable=True) # e.g. "HDFC Infinia", "UPI AutoPay", "Direct Debit"
+    cancellation_url = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+

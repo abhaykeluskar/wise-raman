@@ -1399,6 +1399,175 @@ def get_subscriptions(db: Session = Depends(get_db), current_user = Depends(get_
             
     return subscriptions
 
+
+# =========================================================================
+# SUBSCRIPTION INTELLIGENCE & CUSTOM SUBSCRIPTION MANAGEMENT
+# =========================================================================
+
+class CustomSubscriptionCreate(BaseModel):
+    name: str
+    category: Optional[str] = "Digital & Streaming"
+    amount: float
+    frequency: Optional[str] = "MONTHLY"
+    billing_day: Optional[int] = 1
+    next_renewal_date: Optional[date_type] = None
+    payment_method: Optional[str] = "Card"
+    cancellation_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CustomSubscriptionUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    amount: Optional[float] = None
+    frequency: Optional[str] = None
+    billing_day: Optional[int] = None
+    next_renewal_date: Optional[date_type] = None
+    payment_method: Optional[str] = None
+    cancellation_url: Optional[str] = None
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+@app.get("/api/subscriptions/intelligence")
+def get_subscription_intelligence_api(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """
+    Returns full subscription intelligence: auto-detected recurrence, custom subscriptions,
+    active mandates, price hike detection, and category redundancy overlap analysis.
+    """
+    from app.services.subscription_intelligence import get_comprehensive_subscription_payload
+    from app.models import CustomSubscription, MandateRecord, Transaction
+    
+    # 1. Auto subscriptions
+    auto_subs = get_subscriptions(db, current_user)
+    
+    # 2. Custom subscriptions
+    custom_subs = db.query(CustomSubscription).filter(CustomSubscription.user_id == current_user.id).all()
+    custom_dicts = [
+        {
+            "id": str(c.id),
+            "name": c.name,
+            "category": c.category,
+            "amount": float(c.amount),
+            "frequency": c.frequency,
+            "billing_day": c.billing_day,
+            "next_renewal_date": c.next_renewal_date,
+            "payment_method": c.payment_method,
+            "cancellation_url": c.cancellation_url,
+            "is_active": c.is_active,
+            "notes": c.notes
+        }
+        for c in custom_subs
+    ]
+    
+    # 3. Active Mandates
+    mandates = db.query(MandateRecord).filter(MandateRecord.user_id == current_user.id, MandateRecord.is_active == True).all()
+    mandate_dicts = [
+        {
+            "biller_name": m.biller_name,
+            "amount": float(m.amount or 0),
+            "mandate_type": m.mandate_type,
+            "frequency": m.frequency or "MONTHLY",
+            "next_debit_date": str(m.next_debit_date) if m.next_debit_date else None
+        }
+        for m in mandates
+    ]
+    
+    # 4. Transactions for price hike analysis
+    all_txns = db.query(Transaction).filter(Transaction.user_id == current_user.id).all()
+    txn_dicts = [
+        {
+            "id": str(t.id),
+            "amount": float(t.amount),
+            "date": str(t.date),
+            "raw_text": t.raw_text,
+            "description": t.description,
+            "merchant": t.merchant,
+            "normalized_narration": t.normalized_narration,
+            "is_excluded_from_spending": t.is_excluded_from_spending
+        }
+        for t in all_txns
+    ]
+    
+    return get_comprehensive_subscription_payload(
+        auto_subscriptions=auto_subs,
+        custom_subscriptions=custom_dicts,
+        mandates=mandate_dicts,
+        transactions=txn_dicts
+    )
+
+
+@app.get("/api/subscriptions/custom")
+def list_custom_subscriptions_api(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """List all custom/offline subscriptions registered by the user."""
+    from app.models import CustomSubscription
+    subs = db.query(CustomSubscription).filter(CustomSubscription.user_id == current_user.id).order_by(CustomSubscription.created_at.desc()).all()
+    return subs
+
+
+@app.post("/api/subscriptions/custom")
+def create_custom_subscription_api(payload: CustomSubscriptionCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """Register a new custom or offline subscription."""
+    from app.models import CustomSubscription
+    sub = CustomSubscription(
+        user_id=current_user.id,
+        name=payload.name,
+        category=payload.category,
+        amount=payload.amount,
+        frequency=payload.frequency or "MONTHLY",
+        billing_day=payload.billing_day or 1,
+        next_renewal_date=payload.next_renewal_date,
+        payment_method=payload.payment_method or "Card",
+        cancellation_url=payload.cancellation_url,
+        notes=payload.notes
+    )
+    db.add(sub)
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
+@app.put("/api/subscriptions/custom/{sub_id}")
+def update_custom_subscription_api(sub_id: str, payload: CustomSubscriptionUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """Update an existing custom subscription."""
+    from app.models import CustomSubscription
+    sub = db.query(CustomSubscription).filter(CustomSubscription.id == sub_id, CustomSubscription.user_id == current_user.id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    
+    update_data = payload.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(sub, field, value)
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
+@app.delete("/api/subscriptions/custom/{sub_id}")
+def delete_custom_subscription_api(sub_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """Delete a custom subscription."""
+    from app.models import CustomSubscription
+    sub = db.query(CustomSubscription).filter(CustomSubscription.id == sub_id, CustomSubscription.user_id == current_user.id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    db.delete(sub)
+    db.commit()
+    return {"message": "Subscription deleted successfully"}
+
+
+@app.post("/api/subscriptions/custom/{sub_id}/toggle")
+def toggle_custom_subscription_api(sub_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """Toggle the active/paused status of a custom subscription."""
+    from app.models import CustomSubscription
+    sub = db.query(CustomSubscription).filter(CustomSubscription.id == sub_id, CustomSubscription.user_id == current_user.id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    sub.is_active = not sub.is_active
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
 @app.get("/api/analytics/cashflow")
 def get_cashflow(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     from sqlalchemy import func, case
@@ -2393,33 +2562,209 @@ def get_spending_anomalies_api(db: Session = Depends(get_db), current_user = Dep
     return detect_spending_anomalies(txn_dicts)
 
 
-@app.get("/api/analytics/financial-calendar")
-def get_financial_calendar_api(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
-    """
-    Returns monthly financial obligations schedule and projected month-end balance.
-    """
+def _get_user_calendar_payload(db: Session, current_user):
     from app.services.financial_calendar import build_financial_calendar
-    from app.models import Account, AccountSubtype, CreditCard, Loan
+    from app.models import (
+        Account, AccountSubtype, CreditCard, Loan,
+        InsurancePolicy, MandateRecord, Payslip, Transaction, CustomSubscription
+    )
+    from app.services.mandates import detect_mandates
+    from collections import defaultdict
+    from datetime import timedelta
 
     accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
     liquid_balance = sum(float(a.balance or 0) for a in accounts if a.subtype in [AccountSubtype.SAVINGS, AccountSubtype.CURRENT])
-    
-    cards = db.query(CreditCard).filter(CreditCard.user_id == current_user.id).all()
-    card_dicts = [{"card_name": c.card_name, "current_balance": float(c.account.balance or 0) if c.account else 0.0, "payment_due_day": c.statement_date} for c in cards]
 
+    # 1. Subscriptions via transaction recurrence clustering
+    debit_txns = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.amount < 0,
+        Transaction.is_excluded_from_spending == False
+    ).order_by(Transaction.date).all()
+
+    groups = defaultdict(list)
+    for tx in debit_txns:
+        desc = tx.description or tx.raw_text
+        if desc:
+            groups[desc.strip()].append(tx)
+
+    subscriptions = []
+    for desc, txs in groups.items():
+        if len(txs) < 2:
+            continue
+        amounts = [abs(float(tx.amount)) for tx in txs]
+        avg_amount = sum(amounts) / len(amounts)
+        if any(abs(amt - avg_amount) > avg_amount * 0.2 for amt in amounts):
+            continue
+        txs_sorted = sorted(txs, key=lambda x: x.date)
+        intervals = [(txs_sorted[i].date - txs_sorted[i-1].date).days for i in range(1, len(txs_sorted))]
+        if not intervals:
+            continue
+        avg_interval = sum(intervals) / len(intervals)
+        freq = None
+        if 25 <= avg_interval <= 35:
+            freq = "Monthly"
+        elif 350 <= avg_interval <= 380:
+            freq = "Yearly"
+        elif 6 <= avg_interval <= 8:
+            freq = "Weekly"
+
+        if freq:
+            last_date = txs_sorted[-1].date
+            next_date = last_date + (timedelta(days=30) if freq == "Monthly" else (timedelta(days=365) if freq == "Yearly" else timedelta(days=7)))
+            subscriptions.append({
+                "name": desc,
+                "amount": round(avg_amount, 2),
+                "frequency": freq,
+                "next_expected_date": next_date.isoformat()
+            })
+
+    # 1b. Custom user-managed subscriptions
+    custom_subs = db.query(CustomSubscription).filter(
+        CustomSubscription.user_id == current_user.id,
+        CustomSubscription.is_active == True
+    ).all()
+    for cs in custom_subs:
+        subscriptions.append({
+            "name": cs.name,
+            "amount": float(cs.amount),
+            "frequency": cs.frequency.capitalize() if cs.frequency else "Monthly",
+            "next_expected_date": cs.next_renewal_date.isoformat() if cs.next_renewal_date else None,
+            "day": cs.billing_day or 1,
+            "category": cs.category
+        })
+
+    # 2. Credit Cards
+    cards = db.query(CreditCard).filter(CreditCard.user_id == current_user.id).all()
+    card_dicts = [
+        {
+            "card_name": c.card_name,
+            "current_balance": float(c.account.balance or 0) if c.account else 0.0,
+            "payment_due_day": c.statement_date or 10,
+            "statement_date": c.statement_date
+        }
+        for c in cards
+    ]
+
+    # 3. Loans
     loans = db.query(Loan).filter(Loan.user_id == current_user.id).all()
-    loan_dicts = [{"loan_name": l.loan_name, "emi_amount": float(l.emi_amount or 0)} for l in loans]
+    loan_dicts = [
+        {
+            "loan_name": l.loan_name,
+            "emi_amount": float(l.emi_amount or 0),
+            "due_day": l.next_due_date.day if l.next_due_date else 10,
+            "lender_name": l.lender_name,
+            "loan_type": l.loan_type.value if hasattr(l.loan_type, "value") else str(l.loan_type)
+        }
+        for l in loans
+    ]
+
+    # 4. Insurance Policies
+    policies = db.query(InsurancePolicy).filter(InsurancePolicy.user_id == current_user.id).all()
+    policy_dicts = [
+        {
+            "policy_name": p.policy_name,
+            "premium_amount": float(p.premium_amount or 0),
+            "renewal_date": str(p.renewal_date) if p.renewal_date else None,
+            "insurer_name": p.insurer_name,
+            "premium_frequency": p.premium_frequency.value if hasattr(p.premium_frequency, "value") else str(p.premium_frequency),
+            "sum_insured": float(p.sum_insured or 0)
+        }
+        for p in policies
+    ]
+
+    # 5. Mandates
+    mandates = db.query(MandateRecord).filter(MandateRecord.user_id == current_user.id, MandateRecord.is_active == True).all()
+    mandate_dicts = [
+        {
+            "biller_name": m.biller_name,
+            "amount": float(m.amount or 0),
+            "mandate_type": m.mandate_type,
+            "next_debit_date": str(m.next_debit_date) if m.next_debit_date else None
+        }
+        for m in mandates
+    ]
+    if not mandate_dicts:
+        all_txns = db.query(Transaction).filter(Transaction.user_id == current_user.id).all()
+        txn_dicts = [{"id": str(t.id), "amount": float(t.amount), "date": str(t.date), "raw_text": t.raw_text, "description": t.description} for t in all_txns]
+        detected = detect_mandates(txn_dicts)
+        mandate_dicts = [{"biller_name": d["biller_name"], "amount": d["amount"], "mandate_type": d["mandate_type"], "next_debit_date": d.get("next_debit_date")} for d in detected]
+
+    # 6. Salary detection (Payslip or recurring salary credit)
+    monthly_salary = 0.0
+    latest_payslip = db.query(Payslip).filter(Payslip.user_id == current_user.id).order_by(Payslip.created_at.desc()).first()
+    if latest_payslip and latest_payslip.net_pay:
+        monthly_salary = float(latest_payslip.net_pay)
+    else:
+        salary_txns = db.query(Transaction).filter(
+            Transaction.user_id == current_user.id,
+            Transaction.amount > 0,
+            Transaction.category.ilike("%Salary%")
+        ).order_by(Transaction.date.desc()).limit(3).all()
+        if salary_txns:
+            monthly_salary = float(salary_txns[0].amount)
+
+    # 7. Rent detection
+    rent_amount = 0.0
+    rent_day = 5
+    rent_txns = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.amount < 0,
+        (Transaction.category.ilike("%Rent%") | Transaction.raw_text.ilike("%RENT%"))
+    ).order_by(Transaction.date.desc()).limit(2).all()
+    if rent_txns:
+        rent_amount = abs(float(rent_txns[0].amount))
+        if rent_txns[0].date:
+            rent_day = rent_txns[0].date.day
 
     return build_financial_calendar(
         current_liquid_balance=liquid_balance,
-        monthly_salary=150000.0,
+        monthly_salary=monthly_salary,
         salary_day=1,
+        subscriptions=subscriptions,
         credit_cards=card_dicts,
         loans=loan_dicts,
-        mandates=[{"biller_name": "Tata Mutual Fund SIP", "amount": 10000.0}],
-        rent_amount=30000.0,
-        rent_day=5
+        mandates=mandate_dicts,
+        insurance_policies=policy_dicts,
+        rent_amount=rent_amount,
+        rent_day=rent_day,
+        include_tax_deadlines=True
     )
+
+
+@app.get("/api/analytics/financial-calendar")
+def get_financial_calendar_api(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """
+    Returns monthly financial obligations schedule, upcoming alerts, and projected cash balance.
+    """
+    return _get_user_calendar_payload(db, current_user)
+
+
+@app.get("/api/analytics/financial-calendar/export-ics")
+def export_financial_calendar_ics_api(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """
+    Exports the user's financial calendar alerts, subscriptions, card dues, and EMIs as an RFC 5545 .ics file.
+    """
+    from fastapi.responses import Response
+    from app.services.ics_export import generate_ics_calendar
+
+    cal_data = _get_user_calendar_payload(db, current_user)
+    events = cal_data.get("events", [])
+    ics_text = generate_ics_calendar(
+        events=events,
+        calendar_name=f"WiseRaman - {current_user.name or 'Financial'} Calendar",
+        reminder_days_before=2
+    )
+
+    return Response(
+        content=ics_text,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            "Content-Disposition": "attachment; filename=\"wiseraman_financial_calendar.ics\"",
+            "Cache-Control": "no-cache"
+        }
+    )
+
 
 
 @app.get("/api/analytics/lifestyle-inflation")

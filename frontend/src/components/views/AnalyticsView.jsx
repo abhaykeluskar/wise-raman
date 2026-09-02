@@ -214,8 +214,8 @@ export const AnalyticsView = () => {
     };
   }, [timeFilteredTxs, timeframe]);
 
-  const STACK_COLORS = ['#FF7E67', '#4A90E2', '#10b981', '#F5A623'];
-  const COLORS = ['#FF7E67', '#4A90E2', '#10b981', '#F5A623', '#9B9B9B', '#D0021B', '#7ED321', '#BD10E0', '#9013FE', '#4A4A4A'];
+  const STACK_COLORS = ['#60A5FA', '#34D399', '#FBBF24', '#F87171'];
+  const COLORS = ['#60A5FA', '#34D399', '#FBBF24', '#F87171', '#A78BFA', '#F472B6', '#22D3EE', '#2DD4BF', '#94A3B8'];
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 pb-12">
@@ -223,15 +223,15 @@ export const AnalyticsView = () => {
       {/* Header & Flow Filters */}
       <div className={`p-5 sm:p-6 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-0 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
         <div className="flex items-center gap-3.5">
-          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#FF7E67]')}`}>
+          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')}`}>
             <Activity className="h-6 w-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-white', 'text-slate-800')}`}>
+              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-[#F4F7FA]', 'text-[#17202A]')}`}>
                 Financial Intelligence
               </h1>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/20">
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-[#5EEAD4]/15 text-[#5EEAD4] border border-[#5EEAD4]/20">
                 {filteredTxs.length} Transactions
               </span>
             </div>
@@ -241,7 +241,7 @@ export const AnalyticsView = () => {
           </div>
         </div>
         
-        <div className={`flex flex-wrap p-1 rounded-xl gap-1 ${style('bg-[#1a1a2e]', 'bg-slate-200')} self-start sm:self-auto`}>
+        <div className={`flex flex-wrap p-1 rounded-xl gap-1 ${style('neu-inset-dark', 'neu-inset-light')} self-start sm:self-auto`}>
           {['ALL', 'OUTFLOW', 'INFLOW', 'TRANSFERS'].map((f) => (
             <button
               key={f}
@@ -249,8 +249,8 @@ export const AnalyticsView = () => {
               onClick={() => setFlowFilter(f)}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border-0 cursor-pointer ${
                 flowFilter === f 
-                  ? (theme === 'dark' ? 'bg-[#FF7E67] text-white shadow-lg' : 'bg-white text-slate-800 shadow') 
-                  : (theme === 'dark' ? 'text-slate-400 hover:text-slate-200 hover:bg-[#24243E]' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-300')
+                  ? style('neu-flat-dark text-[#5EEAD4]', 'bg-[#5EEAD4] text-[#0A0E14]', 'neu-flat-light text-[#0F766E]', 'bg-[#0F766E] text-white')
+                  : style('text-slate-400 hover:text-slate-200', 'text-slate-600 hover:text-slate-900')
               }`}
             >
               {f === 'OUTFLOW' ? 'Pure Outflow' : f}
@@ -271,8 +271,8 @@ export const AnalyticsView = () => {
               onClick={() => setTimeframe(tf.key)}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border-0 cursor-pointer ${
                 timeframe === tf.key
-                  ? (theme === 'dark' ? 'bg-[#FF7E67] text-white shadow-lg' : 'bg-white text-slate-800 shadow')
-                  : (theme === 'dark' ? 'text-slate-400 hover:text-slate-200 hover:bg-[#24243E]' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-300')
+                  ? style('neu-flat-dark text-[#5EEAD4]', 'bg-[#5EEAD4] text-[#0A0E14]', 'neu-flat-light text-[#0F766E]', 'bg-[#0F766E] text-white')
+                  : style('text-slate-400 hover:text-slate-200', 'text-slate-600 hover:text-slate-900')
               }`}
             >
               {tf.label}
@@ -499,7 +499,7 @@ export const AnalyticsView = () => {
           <div className="text-xs font-bold text-slate-500 mt-2 flex flex-col gap-1">
             <span>{velocityMetrics.label}</span>
             <span>
-              Monthly Run-Rate: <strong className={style('text-[#FF7E67]', 'text-red-500')}>₹{velocityMetrics.projectedMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
+              Monthly Run-Rate: <strong className={style('text-rose-400', 'text-rose-600')}>₹{velocityMetrics.projectedMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
             </span>
           </div>
         </div>

@@ -403,15 +403,15 @@ export const HouseholdOSView = () => {
       {/* 1. Sleek Page Header */}
       <div className={`p-5 sm:p-6 rounded-3xl border-0 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
         <div className="flex items-center gap-3.5">
-          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-indigo-400', 'neu-flat-light text-indigo-600')}`}>
+          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')}`}>
             <Home className="h-6 w-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-white', 'text-slate-800')}`}>
+              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-[#F4F7FA]', 'text-[#17202A]')}`}>
                 Household Financial OS
               </h1>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/20">
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase tracking-wider bg-[#5EEAD4]/15 text-[#5EEAD4] border border-[#5EEAD4]/20">
                 Family & Wealth
               </span>
             </div>
@@ -423,7 +423,7 @@ export const HouseholdOSView = () => {
 
         {/* Header Right Metric Badge */}
         <div className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl self-start md:self-auto ${style('neu-inset-dark', 'neu-inset-light')}`}>
-          <HeartHandshake className="h-4 w-4 text-indigo-400" />
+          <HeartHandshake className="h-4 w-4 text-[#5EEAD4]" />
           <div className="text-left">
             <div className="text-[10px] font-bold uppercase text-slate-400">Combined Net Worth</div>
             <div className={`text-sm font-black text-emerald-400`}>
@@ -445,7 +445,7 @@ export const HouseholdOSView = () => {
               onClick={() => setActiveSubTab(t.key)}
               className={`flex items-center justify-center gap-2 px-2.5 py-2.5 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer text-center ${
                 active
-                  ? style('neu-flat-dark text-indigo-400 ring-1 ring-indigo-500/30', 'bg-indigo-600 text-white shadow-md')
+                  ? style('neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]', 'bg-[#0F766E] text-white shadow-md')
                   : style('text-slate-400 hover:text-slate-200 hover:bg-white/5', 'text-slate-600 hover:text-slate-900 hover:bg-black/5')
               }`}
             >
@@ -453,7 +453,7 @@ export const HouseholdOSView = () => {
               <span className="truncate">{t.label}</span>
               {t.count !== undefined && t.count > 0 && (
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  active ? 'bg-indigo-500/30 text-indigo-200' : 'bg-slate-700/40 text-slate-400'
+                  active ? 'bg-[#5EEAD4]/20 text-[#5EEAD4]' : 'bg-slate-700/40 text-slate-400'
                 }`}>
                   {t.count}
                 </span>

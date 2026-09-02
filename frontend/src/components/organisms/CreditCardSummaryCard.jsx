@@ -47,16 +47,16 @@ export const CreditCardSummaryCard = ({ onSelectCard }) => {
   const totalOutstanding = cardStats.reduce((sum, c) => sum + c.totalPayment, 0);
 
   return (
-    <div className={`p-6 rounded-2xl border-0 flex flex-col justify-between transition-all duration-300 min-h-[320px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
+    <div className={`p-6 rounded-3xl border-0 flex flex-col justify-between transition-all duration-300 min-h-[320px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
       <div>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <CreditCard className={`h-4 w-4 ${style('text-[#FF7E67]', 'text-[#4A90E2]')}`} />
+            <CreditCard className={`h-4 w-4 ${style('text-[#5EEAD4]', 'text-[#0F766E]')}`} />
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Credit Cards Summary
             </h3>
           </div>
-          <Badge variant="accent">
+          <Badge variant="brand">
             {cards.length} Active Cards
           </Badge>
         </div>
@@ -71,22 +71,22 @@ export const CreditCardSummaryCard = ({ onSelectCard }) => {
               <div 
                 key={c.id}
                 onClick={() => onSelectCard && onSelectCard(c.id)}
-                className={`p-3 rounded-xl flex items-center justify-between gap-3 border-0 transition-all cursor-pointer ${style('neu-inset-dark hover:brightness-110', 'neu-inset-light hover:brightness-95')}`}
+                className={`p-3.5 rounded-2xl flex items-center justify-between gap-3 border-0 transition-all cursor-pointer ${style('neu-inset-dark hover:brightness-110', 'neu-inset-light hover:brightness-95')}`}
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <NetworkLogo network={c.network} />
                   <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-bold truncate">
+                    <span className={`text-xs font-bold truncate ${style('text-[#F4F7FA]', 'text-[#17202A]')}`}>
                       {c.card_name}
                     </span>
-                    <span className="text-xs text-slate-400 flex items-center gap-1 font-normal truncate">
+                    <span className="text-xs text-slate-400 flex items-center gap-1 font-normal truncate mt-0.5">
                       <Calendar className="h-3 w-3 shrink-0" /> Due {c.dueDayText} ({c.diffDays}d)
                     </span>
                   </div>
                 </div>
 
                 <div className="flex flex-col items-end justify-center shrink-0 whitespace-nowrap pl-2">
-                  <span className="text-sm font-black text-red-400 tabular-nums">
+                  <span className="text-sm font-black text-rose-400 tabular-nums">
                     {formatCurrency(c.totalPayment)}
                   </span>
                 </div>
@@ -100,7 +100,7 @@ export const CreditCardSummaryCard = ({ onSelectCard }) => {
         <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
           Total Payment Due
         </span>
-        <span className="text-lg font-black text-red-400 tabular-nums">
+        <span className="text-lg font-black text-rose-400 tabular-nums">
           {formatCurrency(totalOutstanding)}
         </span>
       </div>

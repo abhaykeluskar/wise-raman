@@ -10,12 +10,13 @@ export const ThemeProvider = ({ children }) => {
     const root = document.documentElement;
     const isDark = theme === 'dark';
     root.style.colorScheme = theme;
+    root.setAttribute('data-theme', theme);
     root.classList.toggle('dark', isDark);
     root.classList.toggle('light', !isDark);
     document.body.classList.toggle('dark', isDark);
     document.body.classList.toggle('light', !isDark);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isDark ? '#181828' : '#E0E5EC');
+    if (meta) meta.setAttribute('content', isDark ? '#0E1117' : '#F4F7F9');
   }, [theme]);
 
   // Neumorphic style resolver based on active theme

@@ -2,71 +2,55 @@ import React, { useState, useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { TimeframePills } from '../molecules/TimeframePills';
-import { TrendingUp } from 'lucide-react';
-import {
+import { 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
   ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid
+  Legend 
 } from 'recharts';
+import { TrendingUp } from 'lucide-react';
 
 export const IncomeSpendTrendChart = () => {
   const { theme, style } = useTheme();
   const { transactions } = useFinance();
-  const [timeframe, setTimeframe] = useState('all');
+  const [timeframe, setTimeframe] = useState('1m');
 
   const chartData = useMemo(() => {
     if (!transactions || transactions.length === 0) return [];
 
     const now = new Date();
-    let cutoffDate = new Date(0);
+    let startDate = new Date();
 
-    if (timeframe === '1w') {
-      cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    } else if (timeframe === '1m') {
-      cutoffDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-    } else if (timeframe === '1y') {
-      cutoffDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-    }
+    if (timeframe === '1w') startDate.setDate(now.getDate() - 7);
+    else if (timeframe === '1m') startDate.setMonth(now.getMonth() - 1);
+    else if (timeframe === '1y') startDate.setFullYear(now.getFullYear() - 1);
+    else startDate = new Date(0); // All time
 
-    const filtered = transactions.filter(t => {
-      if (!t.date) return false;
-      const d = new Date(t.date);
-      return d >= cutoffDate;
-    });
+    const filtered = transactions.filter(t => new Date(t.date) >= startDate && !t.is_excluded_from_spending);
 
-    // Grouping by Date (for 1w/1m) or Month (for 1y/all)
+    // Grouping by Date
     const grouped = {};
-
-    filtered.forEach(tx => {
-      const d = new Date(tx.date);
-      const key = (timeframe === '1w' || timeframe === '1m')
-        ? d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' })
-        : d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    filtered.forEach(t => {
+      const d = new Date(t.date);
+      const key = timeframe === '1y' || timeframe === 'all'
+        ? d.toLocaleString('default', { month: 'short', year: '2-digit' })
+        : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
       if (!grouped[key]) {
-        grouped[key] = {
-          name: key,
-          timestamp: d.getTime(),
-          Income: 0,
-          Spend: 0
-        };
+        grouped[key] = { name: key, Income: 0, Spend: 0, timestamp: d.getTime() };
       }
 
-      const amt = parseFloat(tx.amount);
-      if (amt > 0) {
-        // True Income / Deposit (excluding internal CC payment received)
-        if (tx.transaction_type !== 'CC_PAYMENT_RECEIVED' && tx.transaction_type !== 'TRANSFER_INTERNAL') {
-          grouped[key].Income += amt;
-        }
-      } else if (amt < 0) {
-        // True Living Spend (excluding excluded internal transfers & cc bill payments)
-        if (!tx.is_excluded_from_spending && tx.transaction_type !== 'CC_BILL_PAYMENT' && tx.transaction_type !== 'TRANSFER_INTERNAL') {
-          grouped[key].Spend += Math.abs(amt);
+      const amt = Math.abs(parseFloat(t.amount || 0));
+      if (t.amount > 0) {
+        grouped[key].Income += amt;
+      } else {
+        // Exclude credit card bill payments / self transfers if already categorized
+        if (t.category !== 'Credit Card Payment' && t.category !== 'Transfer') {
+          grouped[key].Spend += amt;
         }
       }
     });
@@ -74,12 +58,15 @@ export const IncomeSpendTrendChart = () => {
     return Object.values(grouped).sort((a, b) => a.timestamp - b.timestamp);
   }, [transactions, timeframe]);
 
+  const spendColor = theme === 'dark' ? '#F87171' : '#DC2626';
+  const incomeColor = theme === 'dark' ? '#34D399' : '#059669';
+
   return (
-    <div className={`p-6 rounded-2xl border-0 transition-all duration-300 flex flex-col min-h-[380px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
+    <div className={`p-6 rounded-3xl border-0 transition-all duration-300 flex flex-col min-h-[380px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
-          <TrendingUp className={`h-4 w-4 ${style('text-[#FF7E67]', 'text-[#4A90E2]')}`} />
+          <TrendingUp className={`h-4 w-4 ${style('text-[#5EEAD4]', 'text-[#0F766E]')}`} />
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
             Income vs. Spend Trend
           </h3>
@@ -105,30 +92,30 @@ export const IncomeSpendTrendChart = () => {
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
               <defs>
                 <linearGradient id="trendSpend" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={theme === 'dark' ? '#FF7E67' : '#ef4444'} stopOpacity={0.35}/>
-                  <stop offset="95%" stopColor={theme === 'dark' ? '#FF7E67' : '#ef4444'} stopOpacity={0}/>
+                  <stop offset="5%" stopColor={spendColor} stopOpacity={0.35}/>
+                  <stop offset="95%" stopColor={spendColor} stopOpacity={0}/>
                 </linearGradient>
                 <linearGradient id="trendIncome" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.35}/>
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  <stop offset="5%" stopColor={incomeColor} stopOpacity={0.35}/>
+                  <stop offset="95%" stopColor={incomeColor} stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#1A1A2E' : '#E2E8F0'} />
-              <XAxis dataKey="name" stroke="#8d99ae" fontSize={10} tickLine={false} axisLine={false} tickMargin={8} interval="preserveStartEnd" minTickGap={20} />
-              <YAxis stroke="#8d99ae" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val >= 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#19202A' : '#E8EEF2'} />
+              <XAxis dataKey="name" stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} tickMargin={8} interval="preserveStartEnd" minTickGap={20} />
+              <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val >= 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
               <Tooltip 
                 contentStyle={{
-                  backgroundColor: theme === 'dark' ? '#0F0F1A' : '#FFFFFF',
-                  borderColor: theme === 'dark' ? '#24243E' : '#A3B1C6',
-                  color: theme === 'dark' ? '#EAEAEA' : '#2D3436',
+                  backgroundColor: theme === 'dark' ? '#151A22' : '#FFFFFF',
+                  borderColor: theme === 'dark' ? '#27313D' : '#D8E0E7',
+                  color: theme === 'dark' ? '#F4F7FA' : '#17202A',
                   borderRadius: '12px',
                   fontSize: '12px'
                 }}
                 formatter={(value, name) => [`₹${value.toLocaleString()}`, name === 'Spend' ? 'Living Expenses' : 'Income & Deposits']}
               />
               <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-              <Area type="monotone" dataKey="Income" stroke="#10b981" fillOpacity={1} fill="url(#trendIncome)" strokeWidth={2.5} />
-              <Area type="monotone" dataKey="Spend" stroke={theme === 'dark' ? '#FF7E67' : '#ef4444'} fillOpacity={1} fill="url(#trendSpend)" strokeWidth={2.5} />
+              <Area type="monotone" dataKey="Income" stroke={incomeColor} fillOpacity={1} fill="url(#trendIncome)" strokeWidth={2.5} />
+              <Area type="monotone" dataKey="Spend" stroke={spendColor} fillOpacity={1} fill="url(#trendSpend)" strokeWidth={2.5} />
             </AreaChart>
           </ResponsiveContainer>
         </div>

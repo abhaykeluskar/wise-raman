@@ -41,13 +41,12 @@ export const CalendarHeatmap = ({ transactions, onDayClick }) => {
   }, [transactions]);
 
   const getColor = (val) => {
-    if (val === 0) return theme === 'dark' ? 'bg-[#1e1e2d]' : 'bg-slate-100';
+    if (val === 0) return theme === 'dark' ? 'bg-[#19202A]' : 'bg-slate-100';
     const ratio = val / maxValue;
-    // We use shades of coral/red
-    if (ratio < 0.1) return theme === 'dark' ? 'bg-[#4a2420]' : 'bg-red-200';
-    if (ratio < 0.3) return theme === 'dark' ? 'bg-[#7a3227]' : 'bg-red-300';
-    if (ratio < 0.6) return theme === 'dark' ? 'bg-[#ab412e]' : 'bg-red-400';
-    return theme === 'dark' ? 'bg-[#FF7E67]' : 'bg-red-500';
+    if (ratio < 0.1) return theme === 'dark' ? 'bg-[#3b1c1c]' : 'bg-rose-200';
+    if (ratio < 0.3) return theme === 'dark' ? 'bg-[#662020]' : 'bg-rose-300';
+    if (ratio < 0.6) return theme === 'dark' ? 'bg-[#a32a2a]' : 'bg-rose-400';
+    return theme === 'dark' ? 'bg-[#F87171]' : 'bg-rose-600';
   };
 
   // Group into weeks for rendering columns
@@ -96,10 +95,10 @@ export const CalendarHeatmap = ({ transactions, onDayClick }) => {
       </div>
       <div className="flex items-center justify-end gap-2 text-xs text-slate-500 mt-2">
         <span>Less</span>
-        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#1e1e2d]' : 'bg-slate-100'}`}></div>
-        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#4a2420]' : 'bg-red-200'}`}></div>
-        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#ab412e]' : 'bg-red-400'}`}></div>
-        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#FF7E67]' : 'bg-red-500'}`}></div>
+        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#19202A]' : 'bg-slate-100'}`}></div>
+        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#3b1c1c]' : 'bg-rose-200'}`}></div>
+        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#a32a2a]' : 'bg-rose-400'}`}></div>
+        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#F87171]' : 'bg-rose-600'}`}></div>
         <span>More</span>
       </div>
     </div>

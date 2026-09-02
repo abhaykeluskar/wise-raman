@@ -217,15 +217,15 @@ export const CardPortfolioView = ({ initialCardId }) => {
       {/* Header Banner */}
       <div className={`p-5 sm:p-6 rounded-3xl border-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
         <div className="flex items-center gap-3.5">
-          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')}`}>
+          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')}`}>
             <CreditCardIcon className="h-6 w-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-white', 'text-slate-800')}`}>
+              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-[#F4F7FA]', 'text-[#17202A]')}`}>
                 Credit Card Intelligence
               </h1>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/20">
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-[#5EEAD4]/15 text-[#5EEAD4] border border-[#5EEAD4]/20">
                 {cards.length} Cards
               </span>
             </div>
@@ -238,7 +238,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
         <button
           type="button"
           onClick={() => setShowAddCard(true)}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border-0 cursor-pointer self-start sm:self-auto transition-all ${style('neu-btn-dark text-[#FF7E67]', 'bg-[#4A90E2] text-white')}`}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border-0 cursor-pointer self-start sm:self-auto transition-all ${style('neu-btn-dark text-[#5EEAD4]', 'neu-btn-light text-[#0F766E]')}`}
         >
           <Plus className="h-4 w-4" /> Add Card
         </button>
@@ -268,7 +268,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
                   onClick={() => setSelectedCardId(c.id)}
                   className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
                     isSelected
-                      ? style('neu-flat-dark text-[#FF7E67] ring-1 ring-orange-500/30', 'bg-[#4A90E2] text-white shadow-md')
+                      ? style('neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]', 'bg-[#0F766E] text-white shadow-md')
                       : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
                   }`}
                 >

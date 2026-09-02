@@ -13,13 +13,18 @@ export const Badge = ({ children, variant = 'default', className = '' }) => {
       case 'rupay':
         return style('bg-emerald-600/15 text-emerald-400 border border-emerald-500/30', 'bg-emerald-600 text-white');
       case 'success':
-        return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
+        return style('bg-emerald-500/15 text-emerald-400 border border-emerald-500/30', 'bg-emerald-600/15 text-emerald-700 border border-emerald-600/30');
       case 'danger':
-        return 'bg-red-500/10 text-red-400 border border-red-500/30';
+        return style('bg-red-500/15 text-red-400 border border-red-500/30', 'bg-red-600/15 text-red-700 border border-red-600/30');
       case 'warning':
-        return 'bg-amber-500/10 text-amber-400 border border-amber-500/30';
+        return style('bg-amber-500/15 text-amber-400 border border-amber-500/30', 'bg-amber-600/15 text-amber-700 border border-amber-600/30');
+      case 'brand':
       case 'accent':
-        return style('bg-[#FF7E67]/15 text-[#FF7E67] border border-[#FF7E67]/30', 'bg-[#4A90E2]/15 text-[#4A90E2] border border-[#4A90E2]/30');
+      case 'mint':
+        return style('bg-[#5EEAD4]/15 text-[#5EEAD4] border border-[#5EEAD4]/30', 'bg-[#0F766E]/15 text-[#0F766E] border border-[#0F766E]/30');
+      case 'ai':
+      case 'violet':
+        return style('bg-[#A78BFA]/15 text-[#A78BFA] border border-[#A78BFA]/30', 'bg-[#7C3AED]/15 text-[#7C3AED] border border-[#7C3AED]/30');
       case 'primary':
         return style('bg-indigo-500/15 text-indigo-300 border border-indigo-500/30', 'bg-indigo-100 text-indigo-700 border border-indigo-200');
       case 'neutral':

@@ -80,7 +80,7 @@ export const AddAccountModal = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="flex justify-between items-center border-b pb-3 border-slate-800/10">
           <div className="flex items-center gap-2">
-            <div className={`p-2 rounded-xl ${style('neu-inset-dark text-[#FF7E67]', 'neu-inset-light text-[#4A90E2]')}`}>
+            <div className={`p-2 rounded-xl ${style('neu-inset-dark text-[#5EEAD4]', 'neu-inset-light text-[#0F766E]')}`}>
               <Landmark className="h-4 w-4" />
             </div>
             <div>

@@ -4,6 +4,7 @@ import { FinanceProvider, useFinance } from './context/FinanceContext';
 import { ToastProvider } from './context/ToastContext';
 import { Navbar } from './components/organisms/Navbar';
 import { DashboardView } from './components/views/DashboardView';
+import { FinancialCalendarView } from './components/views/FinancialCalendarView';
 import { CardPortfolioView } from './components/views/CardPortfolioView';
 import { TransactionLedgerView } from './components/views/TransactionLedgerView';
 import { BankAccountsView } from './components/views/BankAccountsView';
@@ -20,6 +21,7 @@ import { DevToolsView } from './components/views/DevToolsView';
 import { HouseholdOSView } from './components/views/HouseholdOSView';
 import { ReviewCenterView } from './components/views/ReviewCenterView';
 import { FinancialHealthView } from './components/views/FinancialHealthView';
+import { ErrorBoundary } from './components/atoms/ErrorBoundary';
 
 const MainLayout = () => {
   const { theme } = useTheme();
@@ -48,8 +50,8 @@ const MainLayout = () => {
     return (
       <div className={`min-h-screen font-sans transition-colors duration-300 ${
         theme === 'dark' 
-          ? 'bg-[#181828] text-[#EAEAEA]' 
-          : 'bg-[#E0E5EC] text-[#2D3436]'
+          ? 'bg-[#0E1117] text-[#F4F7FA]' 
+          : 'bg-[#F4F7F9] text-[#17202A]'
       }`}>
         {authMode === 'login' 
           ? <LoginView onNavigateRegister={() => setAuthMode('register')} />
@@ -62,8 +64,8 @@ const MainLayout = () => {
   return (
     <div className={`min-h-screen font-sans transition-colors duration-300 ${
       theme === 'dark' 
-        ? 'bg-[#181828] text-[#EAEAEA]' 
-        : 'bg-[#E0E5EC] text-[#2D3436]'
+        ? 'bg-[#0E1117] text-[#F4F7FA]' 
+        : 'bg-[#F4F7F9] text-[#17202A]'
     }`}>
       {/* Top Navigation */}
       <Navbar 
@@ -80,7 +82,13 @@ const MainLayout = () => {
           </div>
         )}
         {activeTab === 'dashboard' && (
-          <DashboardView onSelectCard={handleSelectCardFromDashboard} />
+          <DashboardView 
+            onSelectCard={handleSelectCardFromDashboard}
+            onNavigateCalendar={() => setActiveTab('calendar')}
+          />
+        )}
+        {activeTab === 'calendar' && (
+          <FinancialCalendarView />
         )}
         {activeTab === 'accounts' && (
           <BankAccountsView />
@@ -128,8 +136,6 @@ const MainLayout = () => {
     </div>
   );
 };
-
-import { ErrorBoundary } from './components/atoms/ErrorBoundary';
 
 export default function App() {
   return (

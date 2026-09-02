@@ -8,7 +8,7 @@ import { CategoryDonutCard } from '../organisms/CategoryDonutCard';
 import { SubscriptionTrackerCard } from '../organisms/SubscriptionTrackerCard';
 import { useFinance } from '../../context/FinanceContext';
 
-export const DashboardView = ({ onSelectCard }) => {
+export const DashboardView = ({ onSelectCard, onNavigateCalendar }) => {
   const { openInLedger } = useFinance();
 
   return (
@@ -23,7 +23,7 @@ export const DashboardView = ({ onSelectCard }) => {
         <NetWorthDashboardCard />
       </div>
 
-      <SubscriptionTrackerCard />
+      <SubscriptionTrackerCard onNavigateCalendar={onNavigateCalendar} />
 
       {/* 3. Middle Row: Multi-Timeframe Income vs. Spend Trend */}
       <div className="w-full">

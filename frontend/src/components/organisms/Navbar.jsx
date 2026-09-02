@@ -10,17 +10,18 @@ import {
   CreditCard, 
   Settings, 
   Moon, 
-  Sun,
-  Landmark,
-  PieChart,
-  Briefcase,
-  MoreHorizontal,
-  X,
-  LogOut,
-  Terminal,
-  Home,
-  Activity,
-  ShieldCheck
+  Sun, 
+  Landmark, 
+  PieChart, 
+  Briefcase, 
+  MoreHorizontal, 
+  X, 
+  LogOut, 
+  Terminal, 
+  Home, 
+  Activity, 
+  ShieldCheck,
+  CalendarClock
 } from 'lucide-react';
 
 export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
@@ -30,6 +31,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
 
   const desktopNavItems = [
     { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+    { key: 'calendar', label: 'Calendar', icon: CalendarClock },
     { key: 'health', label: 'Health', icon: Activity },
     { key: 'review', label: 'Review', icon: ShieldCheck },
     { key: 'accounts', label: 'Accounts', icon: Landmark },
@@ -46,13 +48,13 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
 
   const mobileNavItems = [
     { key: 'dashboard', label: 'Home', icon: BarChart3 },
+    { key: 'calendar', label: 'Calendar', icon: CalendarClock },
     { key: 'health', label: 'Health', icon: Activity },
     { key: 'review', label: 'Review', icon: ShieldCheck },
     { key: 'transactions', label: 'Ledger', icon: ListFilter },
-    { key: 'cards', label: 'Cards', icon: CreditCard },
   ];
 
-  const moreTabKeys = ['accounts', 'household', 'ai-assistant', 'settings', 'payslips', 'dev-tools'];
+  const moreTabKeys = ['accounts', 'household', 'cards', 'ai-assistant', 'settings', 'payslips', 'analytics', 'dev-tools'];
   const moreIsActive = moreTabKeys.includes(activeTab);
 
   useEffect(() => {
@@ -80,11 +82,11 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
           className="flex items-center gap-2.5 cursor-pointer select-none shrink-0 border-0 bg-transparent p-0"
           aria-label="WiseRaman home"
         >
-          <div className={`p-2.5 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')}`}>
+          <div className={`p-2.5 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')}`}>
             <Wallet className="h-5 w-5" />
           </div>
           <div className="text-left">
-            <h1 className="text-base font-black tracking-tight leading-none">
+            <h1 className={`text-base font-black tracking-tight leading-none ${style('text-[#F4F7FA]', 'text-[#17202A]')}`}>
               WiseRaman
             </h1>
             <span className="hidden sm:block text-[10px] font-bold text-slate-400 tracking-wider uppercase">
@@ -102,13 +104,13 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
                 key={item.key}
                 type="button"
                 onClick={() => onSelectTab(item.key)}
-                className={`flex items-center gap-1.5 px-2.5 xl:px-3.5 py-2 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-2.5 xl:px-3 py-2 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer whitespace-nowrap ${
                   isActive
                     ? style(
-                        'neu-flat-dark text-[#FF7E67]',
-                        'bg-[#FF7E67] text-white',
-                        'neu-flat-light text-[#4A90E2]',
-                        'bg-[#4A90E2] text-white'
+                        'neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]',
+                        'bg-[#5EEAD4] text-[#0A0E14]',
+                        'neu-flat-light text-[#0F766E]',
+                        'bg-[#0F766E] text-white'
                       )
                     : style(
                         'text-slate-400 hover:text-slate-200',
@@ -117,7 +119,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
-                <span className="hidden lg:inline">{item.label}</span>
+                <span className="hidden xl:inline">{item.label}</span>
               </button>
             );
           })}
@@ -129,11 +131,11 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
             onClick={() => onSelectTab('ai-assistant')}
             className={`hidden md:flex p-2.5 rounded-xl border-0 cursor-pointer transition-all ${
               activeTab === 'ai-assistant'
-                ? style('neu-flat-dark text-emerald-400', 'neu-flat-light text-emerald-500')
-                : style('neu-btn-dark text-slate-400', 'neu-btn-light text-slate-600')
+                ? style('neu-flat-dark text-[#A78BFA] shadow-[0_0_10px_rgba(167,139,250,0.2)]', 'neu-flat-light text-[#7C3AED]')
+                : style('neu-btn-dark text-[#A78BFA]/80 hover:text-[#A78BFA]', 'neu-btn-light text-[#7C3AED]/80 hover:text-[#7C3AED]')
             }`}
-            title="AI Assistant"
-            aria-label="AI Assistant"
+            title="AI Financial Copilot"
+            aria-label="AI Financial Copilot"
           >
             <MessageSquare className="h-4 w-4" />
           </button>
@@ -143,7 +145,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
             onClick={() => onSelectTab('settings')}
             className={`hidden md:flex p-2.5 rounded-xl border-0 cursor-pointer transition-all ${
               activeTab === 'settings'
-                ? style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')
+                ? style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')
                 : style('neu-btn-dark text-slate-400', 'neu-btn-light text-slate-600')
             }`}
             title="Settings"
@@ -156,10 +158,10 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
             type="button"
             onClick={onOpenUploadModal}
             className={`flex items-center gap-1.5 min-h-11 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold border-0 cursor-pointer transition-all whitespace-nowrap ${style(
-              'neu-btn-dark text-[#FF7E67] hover:brightness-110',
-              'bg-[#FF7E67] text-white',
-              'neu-btn-light text-[#4A90E2] hover:brightness-105',
-              'bg-[#4A90E2] text-white'
+              'neu-btn-dark text-[#5EEAD4] hover:shadow-[0_0_15px_rgba(94,234,212,0.2)]',
+              'bg-[#5EEAD4] text-[#0A0E14]',
+              'neu-btn-light text-[#0F766E] hover:brightness-105',
+              'bg-[#0F766E] text-white'
             )}`}
             aria-label="Import statement"
           >
@@ -184,7 +186,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
             title="Log out"
             aria-label="Log out"
           >
-            <LogOut className="h-4 w-4 text-red-500 hover:text-red-400" />
+            <LogOut className="h-4 w-4 text-rose-500 hover:text-rose-400" />
           </button>
         </div>
 
@@ -194,7 +196,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
       {moreOpen && (
         <button
           type="button"
-          className="md:hidden fixed inset-0 z-50 bg-black/45 border-0 cursor-pointer"
+          className="md:hidden fixed inset-0 z-50 bg-black/60 border-0 cursor-pointer"
           aria-label="Close menu"
           onClick={() => setMoreOpen(false)}
         />
@@ -202,12 +204,12 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
 
       {moreOpen && (
         <div
-          className={`md:hidden fixed inset-x-0 bottom-0 z-50 rounded-t-3xl p-4 pb-safe shadow-2xl ${style('bg-[#1a1a2e] text-slate-100', 'bg-[#E0E5EC] text-slate-800')}`}
+          className={`md:hidden fixed inset-x-0 bottom-0 z-50 rounded-t-3xl p-4 pb-safe shadow-2xl ${style('bg-[#151A22] text-[#F4F7FA]', 'bg-[#FFFFFF] text-[#17202A]')}`}
           role="dialog"
           aria-label="More"
         >
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold">More</h2>
+            <h2 className="text-sm font-bold">More Services</h2>
             <button
               type="button"
               onClick={() => setMoreOpen(false)}
@@ -219,9 +221,12 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
           </div>
           <div className="grid grid-cols-2 gap-2">
             {[
+              { key: 'cards', label: `Cards (${cards.length})`, icon: CreditCard },
               { key: 'accounts', label: 'Bank Accounts', icon: Landmark },
+              { key: 'household', label: 'Household OS', icon: Home },
               { key: 'payslips', label: 'Payslips', icon: Briefcase },
-              { key: 'ai-assistant', label: 'AI Assistant', icon: MessageSquare },
+              { key: 'analytics', label: 'Analytics', icon: PieChart },
+              { key: 'ai-assistant', label: 'AI Copilot', icon: MessageSquare },
               { key: 'settings', label: 'Settings', icon: Settings },
               ...(user?.email === 'dev@test.com' ? [{ key: 'dev-tools', label: 'Dev Tools', icon: Terminal }] : []),
               { key: 'upload', label: 'Import Statement', icon: Upload },
@@ -248,7 +253,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
                   }}
                   className={`flex items-center gap-3 min-h-12 px-3 py-3 rounded-2xl text-left text-xs font-bold border-0 cursor-pointer ${
                     isActive
-                      ? style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')
+                      ? style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')
                       : style('neu-inset-dark text-slate-200', 'neu-inset-light text-slate-700')
                   }`}
                 >
@@ -262,7 +267,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
       )}
 
       <nav
-        className={`md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-slate-800/10 pb-safe ${style('bg-[#181828]/95 backdrop-blur-md', 'bg-[#E0E5EC]/95 backdrop-blur-md')}`}
+        className={`md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-slate-800/20 pb-safe ${style('bg-[#0E1117]/95 backdrop-blur-md', 'bg-[#F4F7F9]/95 backdrop-blur-md')}`}
         aria-label="Primary"
       >
         <div className="grid grid-cols-6 px-1 pt-1">
@@ -276,7 +281,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
                 onClick={() => handleTabClick(item.key)}
                 className={`flex flex-col items-center justify-center gap-0.5 min-h-12 py-2 rounded-xl border-0 cursor-pointer touch-manipulation ${
                   isActive
-                    ? style('text-[#FF7E67]', 'text-[#4A90E2]')
+                    ? style('text-[#5EEAD4]', 'text-[#0F766E]')
                     : style('text-slate-500', 'text-slate-500')
                 }`}
               >
@@ -290,7 +295,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
             onClick={() => setMoreOpen(open => !open)}
             className={`flex flex-col items-center justify-center gap-0.5 min-h-12 py-2 rounded-xl border-0 cursor-pointer touch-manipulation ${
               moreIsActive || moreOpen
-                ? style('text-[#FF7E67]', 'text-[#4A90E2]')
+                ? style('text-[#5EEAD4]', 'text-[#0F766E]')
                 : style('text-slate-500', 'text-slate-500')
             }`}
             aria-expanded={moreOpen}

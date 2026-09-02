@@ -2,13 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { formatCurrency } from '../../utils/formatters';
+import { CHART_PALETTE } from '../../utils/themeTokens';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { PieChart as PieIcon, ChevronDown } from 'lucide-react';
-
-const CATEGORY_COLORS = [
-  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', 
-  '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6', '#64748b'
-];
 
 export const CategoryDonutCard = () => {
   const { theme, style } = useTheme();
@@ -69,11 +65,11 @@ export const CategoryDonutCard = () => {
   };
 
   return (
-    <div className={`p-6 rounded-2xl border-0 flex flex-col justify-between transition-all duration-300 min-h-[320px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
+    <div className={`p-6 rounded-3xl border-0 flex flex-col justify-between transition-all duration-300 min-h-[320px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
       <div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
-            <PieIcon className="h-4 w-4 text-purple-400" />
+            <PieIcon className="h-4 w-4 text-[#5EEAD4]" />
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Category Distribution
             </h3>
@@ -85,8 +81,8 @@ export const CategoryDonutCard = () => {
               value={selectedMonth}
               onChange={e => setSelectedMonth(e.target.value)}
               className={`rounded-xl px-3 py-1.5 pr-8 text-xs font-semibold appearance-none cursor-pointer border-0 transition-all ${style(
-                'neu-inset-dark text-[#EAEAEA]',
-                'neu-inset-light text-[#2D3436]'
+                'neu-inset-dark text-[#F4F7FA]',
+                'neu-inset-light text-[#17202A]'
               )}`}
             >
               {availableMonths.length === 0 ? (
@@ -122,14 +118,14 @@ export const CategoryDonutCard = () => {
                     stroke="none"
                   >
                     {donutData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]} />
+                      <Cell key={`cell-${index}`} fill={CHART_PALETTE[index % CHART_PALETTE.length]} />
                     ))}
                   </Pie>
                   <Tooltip 
                     contentStyle={{
-                      backgroundColor: theme === 'dark' ? '#0F0F1A' : '#FFFFFF',
-                      borderColor: theme === 'dark' ? '#24243E' : '#A3B1C6',
-                      color: theme === 'dark' ? '#EAEAEA' : '#2D3436',
+                      backgroundColor: theme === 'dark' ? '#151A22' : '#FFFFFF',
+                      borderColor: theme === 'dark' ? '#27313D' : '#D8E0E7',
+                      color: theme === 'dark' ? '#F4F7FA' : '#17202A',
                       borderRadius: '12px',
                       fontSize: '11px'
                     }}
@@ -149,7 +145,7 @@ export const CategoryDonutCard = () => {
                   <div className="flex items-center gap-2 text-xs font-medium min-w-0">
                     <span 
                       className="h-2 w-2 rounded-full flex-shrink-0" 
-                      style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} 
+                      style={{ backgroundColor: CHART_PALETTE[index % CHART_PALETTE.length] }} 
                     />
                     <span className="truncate">{d.name}</span>
                   </div>

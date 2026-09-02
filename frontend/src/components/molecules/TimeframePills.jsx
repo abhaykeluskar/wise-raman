@@ -21,7 +21,12 @@ export const TimeframePills = ({ activeTimeframe = '1m', onSelect }) => {
             onClick={() => onSelect(tf.key)}
             className={`px-3 py-1 text-xxs font-bold rounded-lg transition-all border-0 cursor-pointer ${
               isActive
-                ? style('neu-flat-dark text-[#FF7E67]', 'bg-[#FF7E67] text-white', 'neu-flat-light text-[#4A90E2]', 'bg-[#4A90E2] text-white')
+                ? style(
+                    'neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]',
+                    'bg-[#5EEAD4] text-[#0A0E14]',
+                    'neu-flat-light text-[#0F766E]',
+                    'bg-[#0F766E] text-white'
+                  )
                 : style('text-slate-400 hover:text-slate-200', 'text-slate-600 hover:text-slate-900')
             }`}
           >

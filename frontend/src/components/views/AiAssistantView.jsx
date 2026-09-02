@@ -405,19 +405,24 @@ export const AiAssistantView = () => {
           <div className="p-5 sm:p-6 border-b border-slate-800/10">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-xl ${style('neu-inset-dark text-[#FF7E67]', 'neu-inset-light text-[#4A90E2]')}`}>
+                <div className={`p-2.5 rounded-2xl ${style('neu-inset-dark text-[#A78BFA]', 'neu-inset-light text-[#7C3AED]')}`}>
                   <Bot className="h-6 w-6" />
                 </div>
                 <div>
-                  <h2 className={`text-xl font-black tracking-tight flex items-center gap-2 ${style('text-slate-100', 'text-slate-800')}`}>
-                    WiseRaman Financial Copilot
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className={`text-xl font-black tracking-tight ${style('text-[#F4F7FA]', 'text-[#17202A]')}`}>
+                      WiseRaman Financial Copilot
+                    </h2>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-[#A78BFA]/15 text-[#A78BFA] border border-[#A78BFA]/30">
+                      ✦ AI
+                    </span>
+                  </div>
                   <span className="text-xs text-slate-400 font-medium">Your private financial intelligence</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold tracking-wide self-start sm:self-auto">
-                <Lock className="h-3.5 w-3.5" />
-                Private AI · No cloud AI
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#5EEAD4]/10 border border-[#5EEAD4]/20 text-[#5EEAD4] text-xs font-bold tracking-wide self-start sm:self-auto">
+                <span className="w-2 h-2 rounded-full bg-[#5EEAD4] animate-pulse" />
+                <span>Local · Private · No cloud AI</span>
               </div>
             </div>
           </div>
@@ -433,20 +438,20 @@ export const AiAssistantView = () => {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6">
                 <div className="flex flex-col">
-                  <span className={`text-lg sm:text-xl font-black tabular-nums ${style('text-slate-100', 'text-slate-900')}`}>{formatCurrency(finCtx.income)}</span>
+                  <span className="text-lg sm:text-xl font-black tabular-nums text-emerald-400">{formatCurrency(finCtx.income)}</span>
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Income</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className={`text-lg sm:text-xl font-black tabular-nums ${style('text-slate-100', 'text-slate-900')}`}>{formatCurrency(finCtx.spending)}</span>
+                  <span className="text-lg sm:text-xl font-black tabular-nums text-rose-400">{formatCurrency(finCtx.spending)}</span>
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Spending</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className={`text-lg sm:text-xl font-black tabular-nums ${finCtx.netFlow < 0 ? 'text-red-400' : style('text-slate-100', 'text-slate-900')}`}>{formatCurrency(finCtx.netFlow)}</span>
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Net Flow</span>
+                  <span className={`text-lg sm:text-xl font-black tabular-nums ${finCtx.netFlow < 0 ? 'text-rose-400' : style('text-[#F4F7FA]', 'text-[#17202A]')}`}>{formatCurrency(finCtx.netFlow)}</span>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Remaining</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className={`text-lg sm:text-xl font-black tabular-nums ${style('text-slate-100', 'text-slate-900')}`}>{finCtx.savingsRate.toFixed(1)}%</span>
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Saving</span>
+                  <span className="text-lg sm:text-xl font-black tabular-nums text-[#5EEAD4]">{finCtx.savingsRate.toFixed(1)}%</span>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Saving Rate</span>
                 </div>
               </div>
             )}
@@ -539,10 +544,10 @@ export const AiAssistantView = () => {
                 if (isUser) {
                   return (
                     <div key={msg.id} className="flex items-start gap-3 flex-row-reverse">
-                      <div className={`p-2 rounded-xl flex-shrink-0 ${style('bg-[#FF7E67] text-white', 'bg-[#4A90E2] text-white')}`}>
+                      <div className={`p-2 rounded-xl flex-shrink-0 ${style('bg-[#5EEAD4] text-[#0A0E14]', 'bg-[#0F766E] text-white')}`}>
                         <User className="h-4 w-4" />
                       </div>
-                      <div className={`p-4 rounded-2xl max-w-[85%] text-xs leading-relaxed transition-all ${style('neu-flat-dark text-slate-100 font-medium', 'neu-flat-light text-slate-900 font-medium')}`}>
+                      <div className={`p-4 rounded-2xl max-w-[85%] text-xs leading-relaxed transition-all ${style('neu-flat-dark text-[#F4F7FA] font-medium', 'neu-flat-light text-[#17202A] font-medium')}`}>
                         <p className="whitespace-pre-wrap">{msg.content}</p>
                       </div>
                     </div>
@@ -554,13 +559,13 @@ export const AiAssistantView = () => {
 
                 return (
                   <div key={msg.id} className="flex items-start gap-3">
-                    <div className={`p-2 rounded-xl flex-shrink-0 ${style('neu-inset-dark text-indigo-400', 'neu-inset-light text-indigo-600')}`}>
+                    <div className={`p-2 rounded-xl flex-shrink-0 ${style('neu-inset-dark text-[#A78BFA]', 'neu-inset-light text-[#7C3AED]')}`}>
                       <Bot className="h-4 w-4" />
                     </div>
 
                     <div className="flex flex-col gap-2 max-w-[90%] sm:max-w-[85%]">
                       {/* Main Text Response */}
-                      <div className={`p-4 rounded-2xl text-xs leading-relaxed transition-all ${style('neu-inset-dark text-slate-200', 'neu-inset-light text-slate-800')}`}>
+                      <div className={`p-4 rounded-2xl text-xs leading-relaxed transition-all ${style('neu-inset-dark text-[#F4F7FA]', 'neu-inset-light text-[#17202A]')}`}>
                         <p className="whitespace-pre-wrap">{msg.content}</p>
                       </div>
 

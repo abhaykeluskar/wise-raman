@@ -133,8 +133,8 @@ export const ToastProvider = ({ children }) => {
                 onClick={() => handleConfirmClose(true)}
                 className={`px-4 py-2 text-xs font-bold rounded-xl border-0 cursor-pointer transition-all ${
                   confirmDialog.isDanger
-                    ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20'
-                    : 'bg-[#FF7E67] hover:bg-[#ff6950] text-white shadow-lg shadow-[#FF7E67]/20'
+                    ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20'
+                    : 'bg-[#5EEAD4] hover:bg-[#2DD4BF] text-[#0A0E14] shadow-lg shadow-[#5EEAD4]/20'
                 }`}
               >
                 {confirmDialog.confirmText}

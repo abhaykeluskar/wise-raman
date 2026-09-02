@@ -382,7 +382,7 @@ export const DevToolsView = () => {
       {/* Header Banner */}
       <div className={`p-6 rounded-3xl border-0 flex flex-col md:flex-row md:items-center md:justify-between gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
         <div className="flex items-center gap-4">
-          <div className={`p-3.5 rounded-2xl flex items-center justify-center ${style('neu-inset-dark text-[#FF7E67]', 'neu-inset-light text-[#4A90E2]')}`}>
+          <div className={`p-3.5 rounded-2xl flex items-center justify-center ${style('neu-inset-dark text-[#5EEAD4]', 'neu-inset-light text-[#0F766E]')}`}>
             <FlaskConical className="h-7 w-7" />
           </div>
           <div>
@@ -427,8 +427,8 @@ export const DevToolsView = () => {
           { label: 'Validated', value: stats.validated_transactions, sub: `${stats.reconciled_percentage}% Validated`, color: 'text-emerald-400' },
           { label: 'Financial Events', value: stats.total_events, sub: 'Semantic Entities', color: 'text-indigo-400' },
           { label: 'Needs Review', value: stats.needs_review_count, sub: 'Ambiguous / Low Conf', color: stats.needs_review_count > 0 ? 'text-amber-400' : 'text-slate-400' },
-          { label: 'Invariant Errors', value: stats.invariant_errors_count, sub: stats.invariant_errors_count === 0 ? 'Hard Invariants OK' : 'Violation Detected', color: stats.invariant_errors_count === 0 ? 'text-emerald-400' : 'text-red-400' },
-          { label: 'LLM Authority', value: '0% Math', sub: 'Evidence Packages Only', color: 'text-[#FF7E67]' }
+          { label: 'Invariant Errors', value: stats.invariant_errors_count, sub: stats.invariant_errors_count === 0 ? 'Hard Invariants OK' : 'Violation Detected', color: stats.invariant_errors_count === 0 ? 'text-emerald-400' : 'text-rose-400' },
+          { label: 'LLM Authority', value: '0% Math', sub: 'Evidence Packages Only', color: 'text-[#A78BFA]' }
         ].map((item, idx) => (
           <div key={idx} className={`p-4 rounded-2xl flex flex-col justify-between transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{item.label}</span>
@@ -450,7 +450,7 @@ export const DevToolsView = () => {
               onClick={() => handleTabSelect(tab.key)}
               className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer whitespace-nowrap ${
                 isActive
-                  ? style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')
+                  ? style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -458,7 +458,7 @@ export const DevToolsView = () => {
               <span>{tab.label}</span>
               {tab.badge !== undefined && (
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  isActive ? 'bg-[#FF7E67]/20 text-[#FF7E67]' : 'bg-slate-700/50 text-slate-400'
+                  isActive ? 'bg-[#5EEAD4]/20 text-[#5EEAD4]' : 'bg-slate-700/50 text-slate-400'
                 }`}>
                   {tab.badge}
                 </span>
@@ -505,7 +505,7 @@ export const DevToolsView = () => {
             {/* AI Safety & Isolation Matrix */}
             <div className={`p-6 rounded-3xl flex flex-col gap-4 ${style('neu-flat-dark', 'neu-flat-light')}`}>
               <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-[#FF7E67]" />
+                <ShieldCheck className="h-4 w-4 text-[#5EEAD4]" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">AI Safety & Sandboxing Isolation</h3>
               </div>
               <div className="flex flex-col gap-2.5">
@@ -575,7 +575,7 @@ export const DevToolsView = () => {
             <div className={`lg:col-span-4 p-5 rounded-3xl flex flex-col gap-4 max-h-[750px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Database className="h-4 w-4 text-[#FF7E67]" />
+                  <Database className="h-4 w-4 text-[#5EEAD4]" />
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
                     Transactions ({txnsList.length})
                   </h3>
@@ -611,7 +611,7 @@ export const DevToolsView = () => {
                         onClick={() => inspectTxn(t.id)}
                         className={`p-3 rounded-2xl flex flex-col gap-1.5 text-left border-0 cursor-pointer transition-all ${
                           isSelected
-                            ? style('neu-inset-dark ring-2 ring-[#FF7E67]', 'neu-inset-light ring-2 ring-[#4A90E2]')
+                            ? style('neu-inset-dark ring-2 ring-[#5EEAD4]', 'neu-inset-light ring-2 ring-[#0F766E]')
                             : style('neu-flat-dark hover:brightness-105', 'neu-flat-light hover:brightness-105')
                         }`}
                       >
@@ -636,7 +636,7 @@ export const DevToolsView = () => {
             <div className={`lg:col-span-8 p-6 rounded-3xl flex flex-col gap-6 ${style('neu-flat-dark', 'neu-flat-light')}`}>
               <div className="flex items-center justify-between border-b border-slate-700/40 pb-4">
                 <div className="flex items-center gap-2">
-                  <FlaskConical className="h-5 w-5 text-[#FF7E67]" />
+                  <FlaskConical className="h-5 w-5 text-[#5EEAD4]" />
                   <div>
                     <h3 className="text-sm font-black">Financial Truth Pipeline Trace</h3>
                     <p className="text-[11px] text-slate-400">Step-by-step trace from raw statement to AI explanation</p>
@@ -657,7 +657,7 @@ export const DevToolsView = () => {
 
               {loadingTrace ? (
                 <div className="py-24 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
-                  <RefreshCw className="h-5 w-5 animate-spin text-[#FF7E67]" />
+                  <RefreshCw className="h-5 w-5 animate-spin text-[#5EEAD4]" />
                   <span>Loading full provenance & invariant trace...</span>
                 </div>
               ) : !txnTrace ? (
@@ -871,7 +871,7 @@ export const DevToolsView = () => {
               {/* Step 3: LLM Role & Guardrail Audit */}
               <div className={`p-5 rounded-3xl flex flex-col gap-3 ${style('neu-flat-dark', 'neu-flat-light')}`}>
                 <div className="flex items-center gap-2">
-                  <Lock className="h-4 w-4 text-[#FF7E67]" />
+                  <Lock className="h-4 w-4 text-[#A78BFA]" />
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">3. LLM Safety Boundary</h4>
                 </div>
                 <div className="flex flex-col gap-2 text-xs">
@@ -886,8 +886,8 @@ export const DevToolsView = () => {
                       <span className="font-mono font-bold text-emerald-400 text-[11px]">{b.val}</span>
                     </div>
                   ))}
-                  <div className="p-3 rounded-xl bg-[#FF7E67]/10 border border-[#FF7E67]/30 text-[11px] text-slate-300 mt-1">
-                    <span className="font-bold text-[#FF7E67]">Enforced:</span> The LLM is only given the pre-calculated calculation node to summarize in plain English.
+                  <div className="p-3 rounded-xl bg-[#A78BFA]/10 border border-[#A78BFA]/30 text-[11px] text-slate-300 mt-1">
+                    <span className="font-bold text-[#A78BFA]">Enforced:</span> The LLM is only given the pre-calculated calculation node to summarize in plain English.
                   </div>
                 </div>
               </div>
@@ -1371,7 +1371,7 @@ export const DevToolsView = () => {
           <div className={`w-full max-w-xl p-6 rounded-3xl flex flex-col gap-4 shadow-2xl ${style('bg-[#1a1a2e] text-slate-100', 'bg-[#E0E5EC] text-slate-800')}`}>
             <div className="flex items-center justify-between border-b border-slate-700/40 pb-3">
               <div className="flex items-center gap-2">
-                <HelpCircle className="h-5 w-5 text-[#FF7E67]" />
+                <HelpCircle className="h-5 w-5 text-[#5EEAD4]" />
                 <h3 className="text-sm font-black">Why was this classified this way?</h3>
               </div>
               <button

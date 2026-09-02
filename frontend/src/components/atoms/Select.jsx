@@ -23,9 +23,9 @@ export const Select = ({
         value={value}
         onChange={onChange}
         disabled={disabled}
-        className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 transition-all cursor-pointer ${style(
-          'neu-inset-dark text-[#EAEAEA]',
-          'neu-inset-light text-[#2D3436]'
+        className={`rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#5EEAD4]/40 border-0 transition-all cursor-pointer ${style(
+          'neu-inset-dark text-[#F4F7FA]',
+          'neu-inset-light text-[#17202A]'
         )} disabled:opacity-50 ${className}`}
         {...props}
       >

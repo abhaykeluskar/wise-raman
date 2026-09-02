@@ -202,7 +202,7 @@ export const SettingsView = () => {
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-16">
       
       <div className="flex items-center gap-2">
-        <SettingsIcon className={`h-5 w-5 ${style('text-[#FF7E67]', 'text-[#4A90E2]')}`} />
+        <SettingsIcon className={`h-5 w-5 ${style('text-[#5EEAD4]', 'text-[#0F766E]')}`} />
         <h2 className="text-base font-bold">System Configuration & Preferences</h2>
       </div>
 

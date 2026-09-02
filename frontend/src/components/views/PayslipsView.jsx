@@ -220,7 +220,7 @@ export const PayslipsView = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className={`p-2.5 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#4A90E2]', 'neu-flat-light text-[#4A90E2]')}`}>
+            <div className={`p-2.5 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')}`}>
               <Briefcase className="h-5 w-5" />
             </div>
             <div>
@@ -233,7 +233,7 @@ export const PayslipsView = () => {
 
       {loading ? (
         <div className={`p-12 rounded-3xl flex flex-col items-center justify-center ${style('neu-flat-dark', 'neu-flat-light')}`}>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FF7E67] mb-3"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#5EEAD4] mb-3"></div>
           <span className="text-xs font-semibold text-slate-400">Loading verified payslips...</span>
         </div>
       ) : payslips.length === 0 ? (
@@ -250,125 +250,130 @@ export const PayslipsView = () => {
         </div>
       ) : (
         <>
-          {/* Top Key Metrics Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className={`p-5 rounded-3xl transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Net Pay</span>
-                <div className={`p-2 rounded-xl ${style('neu-inset-dark', 'neu-inset-light')}`}>
-                  <Briefcase className="h-4 w-4 text-emerald-400" />
+          {/* Main Content Dashboard */}
+          {!loading && (
+            <div className="space-y-6">
+              {/* Executive Summary Metrics Deck */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className={`p-5 rounded-3xl transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Gross Compensation</span>
+                    <div className={`p-2 rounded-xl ${style('neu-inset-dark', 'neu-inset-light')}`}>
+                      <Briefcase className="h-4 w-4 text-emerald-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-black text-emerald-400">{formatCurrency(stats.totalGross, true, false)}</p>
+                  <div className="text-[11px] text-slate-400 mt-1 font-medium">
+                    {payslips.length} pay cycles recorded
+                  </div>
                 </div>
-              </div>
-              <p className="text-2xl font-black text-emerald-400">{formatCurrency(stats.totalNet, true, false)}</p>
-              <div className="text-[11px] text-slate-400 mt-1 font-medium flex items-center gap-1">
-                <span>Avg: {formatCurrency(stats.avgMonthlyNet, false, false)} / month</span>
-              </div>
-            </div>
-            
-            <div className={`p-5 rounded-3xl transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Gross Earnings</span>
-                <div className={`p-2 rounded-xl ${style('neu-inset-dark', 'neu-inset-light')}`}>
-                  <TrendingUp className="h-4 w-4 text-[#4A90E2]" />
+                
+                <div className={`p-5 rounded-3xl transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Net Take-Home Pay</span>
+                    <div className={`p-2 rounded-xl ${style('neu-inset-dark', 'neu-inset-light')}`}>
+                      <Wallet className="h-4 w-4 text-[#5EEAD4]" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-black text-[#5EEAD4]">{formatCurrency(stats.totalNet, true, false)}</p>
+                  <div className="text-[11px] text-slate-400 mt-1 font-medium">
+                    Avg: {formatCurrency(stats.avgMonthlyNet, false, false)} / month
+                  </div>
                 </div>
-              </div>
-              <p className="text-2xl font-black">{formatCurrency(stats.totalGross, true, false)}</p>
-              <div className="text-[11px] text-slate-400 mt-1 font-medium">
-                Cumulative pre-tax earnings
-              </div>
-            </div>
 
-            <div className={`p-5 rounded-3xl transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Taxes Paid</span>
-                <div className={`p-2 rounded-xl ${style('neu-inset-dark', 'neu-inset-light')}`}>
-                  <Receipt className="h-4 w-4 text-[#FF7E67]" />
+                <div className={`p-5 rounded-3xl transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Taxes Paid</span>
+                    <div className={`p-2 rounded-xl ${style('neu-inset-dark', 'neu-inset-light')}`}>
+                      <Receipt className="h-4 w-4 text-rose-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-black text-rose-400">{formatCurrency(stats.totalTaxes, true, false)}</p>
+                  <div className="text-[11px] text-slate-400 mt-1 font-medium">
+                    TDS: {formatCurrency(stats.totalTds, false, false)} | PT: {formatCurrency(stats.totalPt, false, false)}
+                  </div>
                 </div>
-              </div>
-              <p className="text-2xl font-black text-[#FF7E67]">{formatCurrency(stats.totalTaxes, true, false)}</p>
-              <div className="text-[11px] text-slate-400 mt-1 font-medium">
-                TDS: {formatCurrency(stats.totalTds, false, false)} | PT: {formatCurrency(stats.totalPt, false, false)}
-              </div>
-            </div>
 
-            <div className={`p-5 rounded-3xl transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Provident Fund (PF)</span>
-                <div className={`p-2 rounded-xl ${style('neu-inset-dark', 'neu-inset-light')}`}>
-                  <PiggyBank className="h-4 w-4 text-purple-400" />
+                <div className={`p-5 rounded-3xl transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Provident Fund (PF)</span>
+                    <div className={`p-2 rounded-xl ${style('neu-inset-dark', 'neu-inset-light')}`}>
+                      <PiggyBank className="h-4 w-4 text-purple-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-black text-purple-400">{formatCurrency(stats.totalPf, true, false)}</p>
+                  <div className="text-[11px] text-slate-400 mt-1 font-medium">
+                    Accumulated employee PF corpus
+                  </div>
                 </div>
               </div>
-              <p className="text-2xl font-black text-purple-400">{formatCurrency(stats.totalPf, true, false)}</p>
-              <div className="text-[11px] text-slate-400 mt-1 font-medium">
-                Accumulated employee PF corpus
-              </div>
-            </div>
-          </div>
 
-          {/* Visual Analytics Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className={`p-5 rounded-3xl ${style('neu-flat-dark', 'neu-flat-light')}`}>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-sm font-bold">Gross vs Net Take-Home Trajectory</h3>
-                  <p className="text-[11px] text-slate-400">Monthly compensation and in-hand salary trends</p>
+              {/* Visual Analytics Charts */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className={`p-5 rounded-3xl ${style('neu-flat-dark', 'neu-flat-light')}`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-sm font-bold">Gross vs Net Take-Home Trajectory</h3>
+                      <p className="text-[11px] text-slate-400">Monthly compensation and in-hand salary trends</p>
+                    </div>
+                  </div>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#19202A' : '#e0e0e0'} vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: theme === 'dark' ? '#888' : '#666' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11, fill: theme === 'dark' ? '#888' : '#666' }} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: theme === 'dark' ? '#151A22' : '#fff', 
+                            borderRadius: '12px', 
+                            border: '1px solid #27313D', 
+                            boxShadow: '0 8px 16px -4px rgb(0 0 0 / 0.3)' 
+                          }}
+                          itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                          formatter={(val) => [`₹${Number(val).toLocaleString('en-IN')}`, '']}
+                        />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                        <Bar dataKey="grossEarnings" name="Gross Earnings" fill={theme === 'dark' ? '#19202A' : '#CBD5E1'} radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="netPay" name="Net Pay" fill="#34D399" radius={[6, 6, 0, 0]} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-              </div>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2A2A3C' : '#e0e0e0'} vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: theme === 'dark' ? '#888' : '#666' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: theme === 'dark' ? '#888' : '#666' }} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: theme === 'dark' ? '#181828' : '#fff', 
-                        borderRadius: '12px', 
-                        border: 'none', 
-                        boxShadow: '0 8px 16px -4px rgb(0 0 0 / 0.3)' 
-                      }}
-                      itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
-                      formatter={(val) => [`₹${Number(val).toLocaleString('en-IN')}`, '']}
-                    />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                    <Bar dataKey="grossEarnings" name="Gross Earnings" fill={theme === 'dark' ? '#2A2A3C' : '#CBD5E1'} radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="netPay" name="Net Pay" fill="#4A90E2" radius={[6, 6, 0, 0]} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
 
-            <div className={`p-5 rounded-3xl ${style('neu-flat-dark', 'neu-flat-light')}`}>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-sm font-bold">Deductions Breakdown</h3>
-                  <p className="text-[11px] text-slate-400">Provident fund and statutory tax withholding</p>
+                <div className={`p-5 rounded-3xl ${style('neu-flat-dark', 'neu-flat-light')}`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-sm font-bold">Deductions Breakdown</h3>
+                      <p className="text-[11px] text-slate-400">Provident fund and statutory tax withholding</p>
+                    </div>
+                  </div>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#19202A' : '#e0e0e0'} vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: theme === 'dark' ? '#888' : '#666' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11, fill: theme === 'dark' ? '#888' : '#666' }} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: theme === 'dark' ? '#151A22' : '#fff', 
+                            borderRadius: '12px', 
+                            border: '1px solid #27313D', 
+                            boxShadow: '0 8px 16px -4px rgb(0 0 0 / 0.3)' 
+                          }}
+                          itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                          formatter={(val) => [`₹${Number(val).toLocaleString('en-IN')}`, '']}
+                        />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                        <Bar dataKey="pf" name="Provident Fund (PF)" stackId="a" fill="#8B5CF6" />
+                        <Bar dataKey="taxes" name="Taxes (TDS + PT)" stackId="a" fill="#F87171" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2A2A3C' : '#e0e0e0'} vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: theme === 'dark' ? '#888' : '#666' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: theme === 'dark' ? '#888' : '#666' }} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: theme === 'dark' ? '#181828' : '#fff', 
-                        borderRadius: '12px', 
-                        border: 'none', 
-                        boxShadow: '0 8px 16px -4px rgb(0 0 0 / 0.3)' 
-                      }}
-                      itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
-                      formatter={(val) => [`₹${Number(val).toLocaleString('en-IN')}`, '']}
-                    />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                    <Bar dataKey="pf" name="Provident Fund (PF)" stackId="a" fill="#8B5CF6" />
-                    <Bar dataKey="taxes" name="Taxes (TDS + PT)" stackId="a" fill="#FF7E67" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
             </div>
-          </div>
+          )}
 
           {/* Filter, Search & Controls Toolbar */}
           <div className={`p-4 sm:p-5 rounded-3xl space-y-4 ${style('neu-flat-dark', 'neu-flat-light')}`}>
@@ -491,7 +496,7 @@ export const PayslipsView = () => {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="text-xs font-bold text-[#FF7E67] hover:underline bg-transparent border-0 cursor-pointer p-0"
+                  className="text-xs font-bold text-[#5EEAD4] hover:underline bg-transparent border-0 cursor-pointer p-0"
                 >
                   Clear all filters
                 </button>
@@ -516,7 +521,7 @@ export const PayslipsView = () => {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="mt-3 px-4 py-2 rounded-xl text-xs font-bold bg-[#4A90E2] text-white border-0 cursor-pointer"
+                  className={`mt-3 px-4 py-2 rounded-xl text-xs font-bold border-0 cursor-pointer ${style('neu-btn-dark text-[#5EEAD4]', 'neu-btn-light text-[#0F766E]')}`}
                 >
                   Reset Filters
                 </button>
@@ -547,8 +552,8 @@ export const PayslipsView = () => {
                       >
                         {/* Employer & Period Info */}
                         <div className="flex items-center gap-3.5">
-                          <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ${style('neu-inset-dark', 'neu-inset-light')}`}>
-                            <FileText className="h-6 w-6 text-[#4A90E2]" />
+                          <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ${style('neu-inset-dark text-[#5EEAD4]', 'neu-inset-light text-[#0F766E]')}`}>
+                            <FileText className="h-6 w-6" />
                           </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
@@ -589,7 +594,7 @@ export const PayslipsView = () => {
                             </div>
                             <div>
                               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">TDS / Tax</div>
-                              <div className="font-bold text-xs text-[#FF7E67]">₹{Number(p.income_tax_tds).toLocaleString('en-IN')}</div>
+                              <div className="font-bold text-xs text-rose-400">₹{Number(p.income_tax_tds).toLocaleString('en-IN')}</div>
                             </div>
                           </div>
 
@@ -669,10 +674,10 @@ export const PayslipsView = () => {
                             {/* Deductions Breakdown */}
                             <div className={`p-4.5 rounded-2xl space-y-3 ${style('neu-flat-dark', 'neu-flat-light')}`}>
                               <div className="flex items-center justify-between border-b pb-2.5 border-slate-800/20">
-                                <span className="text-xs font-black uppercase tracking-wider text-[#FF7E67] flex items-center gap-1.5">
+                                <span className="text-xs font-black uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
                                   <TrendingDown className="h-4 w-4" /> Deductions Breakdown
                                 </span>
-                                <span className="text-xs font-black text-[#FF7E67]">Amount (₹)</span>
+                                <span className="text-xs font-black text-rose-400">Amount (₹)</span>
                               </div>
 
                               <div className="space-y-2 text-xs">
@@ -686,7 +691,7 @@ export const PayslipsView = () => {
                                 </div>
                                 <div className="flex justify-between py-1 border-b border-slate-800/10">
                                   <span className="text-slate-400">Income Tax (TDS)</span>
-                                  <span className="font-bold text-[#FF7E67]">{formatCurrency(p.income_tax_tds, true, false)}</span>
+                                  <span className="font-bold text-rose-400">{formatCurrency(p.income_tax_tds, true, false)}</span>
                                 </div>
                                 <div className="flex justify-between py-1 border-b border-slate-800/10">
                                   <span className="text-slate-400">Other Deductions</span>
@@ -720,7 +725,7 @@ export const PayslipsView = () => {
                               <div className="h-8 w-px bg-slate-700/50"></div>
                               <div className="text-center sm:text-right">
                                 <span className="text-[10px] text-slate-400 uppercase block font-semibold">Deduction Ratio</span>
-                                <span className="text-[#FF7E67] font-black text-sm">{deductionPct}%</span>
+                                <span className="text-rose-400 font-black text-sm">{deductionPct}%</span>
                               </div>
                             </div>
                           </div>
@@ -760,7 +765,7 @@ export const PayslipsView = () => {
                         onClick={() => setCurrentPage(pageNum)}
                         className={`h-8 w-8 rounded-xl text-xs font-black border-0 cursor-pointer transition-all ${
                           isActive
-                            ? 'bg-[#4A90E2] text-white shadow-lg'
+                            ? style('neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]', 'bg-[#0F766E] text-white shadow-lg')
                             : style('neu-btn-dark text-slate-400 hover:text-white', 'neu-btn-light text-slate-600')
                         }`}
                       >

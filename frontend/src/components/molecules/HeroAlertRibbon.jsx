@@ -13,14 +13,14 @@ export const HeroAlertRibbon = () => {
   return (
     <div className={`w-full p-4 px-6 rounded-2xl border-0 flex flex-col sm:flex-row items-center justify-between gap-4 transition-all duration-300 ${style('neu-flat-dark', 'neu-flat-light')}`}>
       <div className="flex items-center gap-3 w-full sm:w-auto">
-        <div className={`p-2.5 rounded-xl flex items-center justify-center ${style('neu-inset-dark text-[#FF7E67]', 'neu-inset-light text-[#4A90E2]')}`}>
+        <div className={`p-2.5 rounded-xl flex items-center justify-center ${style('neu-inset-dark text-[#5EEAD4]', 'neu-inset-light text-[#0F766E]')}`}>
           <CreditCard className="h-5 w-5" />
         </div>
         <div className="flex flex-col">
           <span className="text-xs sm:text-sm font-semibold tracking-tight">
             {nextBillInfo ? (
               <>
-                Welcome Abhay — Next statement for <span className="font-bold">{nextBillInfo.card.card_name}</span> generates on <span className={style('text-[#FF7E67]', 'text-[#4A90E2]')}>{nextBillInfo.formattedDate}</span>
+                Welcome Abhay — Next statement for <span className="font-bold">{nextBillInfo.card.card_name}</span> generates on <span className={style('text-[#5EEAD4]', 'text-[#0F766E]')}>{nextBillInfo.formattedDate}</span>
               </>
             ) : (
               "Welcome Abhay — All credit card statements are up to date"
@@ -42,7 +42,7 @@ export const HeroAlertRibbon = () => {
         <div className="flex items-center gap-2 self-end sm:self-auto">
           <span className={`px-3 py-1 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
             nextBillInfo.daysRemaining <= 3 
-              ? 'bg-red-500/15 text-red-400 border border-red-500/30 animate-pulse'
+              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 animate-pulse'
               : style('neu-inset-dark text-slate-300', 'neu-inset-light text-slate-700')
           }`}>
             <Bell className="h-3 w-3" />

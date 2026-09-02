@@ -75,15 +75,15 @@ export const AnalyticsDrilldownModal = ({ category, transactions, onClose, onOpe
               <button
                 type="button"
                 onClick={onOpenInLedger}
-                className={`px-3 py-2 rounded-xl text-xs font-bold border-0 cursor-pointer ${style('neu-btn-dark text-[#FF7E67]', 'neu-btn-light text-[#4A90E2]')}`}
+                className={`px-3 py-2 rounded-xl text-xs font-bold border-0 cursor-pointer ${style('neu-btn-dark text-[#5EEAD4]', 'neu-btn-light text-[#0F766E]')}`}
               >
                 Open in Ledger
               </button>
             )}
             <button 
-              type="button"
+              type="button" 
               onClick={onClose}
-              className={`p-2 rounded-full ${style('hover:bg-[#24243E] text-slate-400 hover:text-white', 'hover:bg-slate-200 text-slate-500 hover:text-slate-800')} transition-colors`}
+              className={`p-2 rounded-full ${style('hover:bg-[#19202A] text-slate-400 hover:text-white', 'hover:bg-slate-200 text-slate-500 hover:text-slate-800')} transition-colors`}
             >
               <X className="h-6 w-6" />
             </button>
@@ -105,13 +105,13 @@ export const AnalyticsDrilldownModal = ({ category, transactions, onClose, onOpe
                       <XAxis type="number" hide />
                       <YAxis dataKey="name" type="category" stroke="#8d99ae" fontSize={11} tickLine={false} axisLine={false} width={100} />
                       <Tooltip 
-                        cursor={{fill: theme === 'dark' ? '#24243E' : '#E2E8F0'}}
-                        contentStyle={{ backgroundColor: theme==='dark'?'#0F0F1A':'#FFF', borderColor: theme==='dark'?'#24243E':'#A3B1C6', borderRadius: '8px', color: theme==='dark'?'#EAEAEA':'#333' }}
+                        cursor={{fill: theme === 'dark' ? '#19202A' : '#E2E8F0'}}
+                        contentStyle={{ backgroundColor: theme==='dark'?'#151A22':'#FFF', borderColor: theme==='dark'?'#27313D':'#D8E0E7', borderRadius: '8px', color: theme==='dark'?'#F4F7FA':'#17202A' }}
                         formatter={(val) => [`₹${val.toLocaleString()}`, 'Spend']}
                       />
                       <Bar dataKey="Spend" radius={[0, 4, 4, 0]} barSize={16}>
                         {merchants.map((entry, idx) => (
-                          <Cell key={idx} fill={theme === 'dark' ? '#FF7E67' : '#4A90E2'} />
+                          <Cell key={idx} fill={theme === 'dark' ? '#5EEAD4' : '#0F766E'} />
                         ))}
                       </Bar>
                     </BarChart>

@@ -257,15 +257,15 @@ export const TransactionLedgerView = () => {
       {/* Header Banner */}
       <div className={`p-5 sm:p-6 rounded-3xl border-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
         <div className="flex items-center gap-3.5">
-          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')}`}>
+          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')}`}>
             <ListFilter className="h-6 w-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-white', 'text-slate-800')}`}>
+              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-[#F4F7FA]', 'text-[#17202A]')}`}>
                 Transaction Ledger
               </h1>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/20">
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-[#5EEAD4]/15 text-[#5EEAD4] border border-[#5EEAD4]/20">
                 {filteredTransactions.length} Transactions
               </span>
             </div>
@@ -283,7 +283,7 @@ export const TransactionLedgerView = () => {
           onClick={() => setSelectedBankId('ALL')}
           className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
             selectedBankId === 'ALL'
-              ? style('neu-flat-dark text-[#FF7E67] ring-1 ring-orange-500/30', 'bg-[#FF7E67] text-white shadow-md')
+              ? style('neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]', 'bg-[#0F766E] text-white shadow-md')
               : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
           }`}
         >
@@ -299,7 +299,7 @@ export const TransactionLedgerView = () => {
               onClick={() => setSelectedBankId(b.id)}
               className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
                 isSelected
-                  ? style('neu-flat-dark text-[#FF7E67] ring-1 ring-orange-500/30', 'bg-[#FF7E67] text-white shadow-md')
+                  ? style('neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]', 'bg-[#0F766E] text-white shadow-md')
                   : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
               }`}
             >
@@ -311,9 +311,9 @@ export const TransactionLedgerView = () => {
 
       {/* 2. Contextual Spending Trend Chart for Selected Bank */}
       {bankChartData.length > 0 && (
-        <div className={`p-6 rounded-2xl border-0 flex flex-col gap-3 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+        <div className={`p-6 rounded-3xl border-0 flex flex-col gap-3 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
           <div className="flex items-center gap-2">
-            <TrendingDown className={`h-4 w-4 ${style('text-[#FF7E67]', 'text-[#4A90E2]')}`} />
+            <TrendingDown className={`h-4 w-4 ${style('text-rose-400', 'text-rose-600')}`} />
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               {selectedBankId === 'ALL' ? 'Overall Recent Spend Velocity' : `${activeBanks.find(b => b.id === selectedBankId)?.name || 'Bank'} Spend Trend`}
             </h3>
@@ -324,24 +324,24 @@ export const TransactionLedgerView = () => {
               <AreaChart data={bankChartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="ledgerSpend" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={theme === 'dark' ? '#FF7E67' : '#ef4444'} stopOpacity={0.35}/>
-                    <stop offset="95%" stopColor={theme === 'dark' ? '#FF7E67' : '#ef4444'} stopOpacity={0}/>
+                    <stop offset="5%" stopColor={theme === 'dark' ? '#F87171' : '#DC2626'} stopOpacity={0.35}/>
+                    <stop offset="95%" stopColor={theme === 'dark' ? '#F87171' : '#DC2626'} stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#1A1A2E' : '#E2E8F0'} />
-                <XAxis dataKey="name" stroke="#8d99ae" fontSize={9} tickLine={false} axisLine={false} />
-                <YAxis stroke="#8d99ae" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v >= 1000 ? (v/1000).toFixed(0) + 'k' : v}`} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#19202A' : '#E8EEF2'} />
+                <XAxis dataKey="name" stroke="#94A3B8" fontSize={9} tickLine={false} axisLine={false} />
+                <YAxis stroke="#94A3B8" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v >= 1000 ? (v/1000).toFixed(0) + 'k' : v}`} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: theme === 'dark' ? '#0F0F1A' : '#FFFFFF',
-                    borderColor: theme === 'dark' ? '#24243E' : '#A3B1C6',
-                    color: theme === 'dark' ? '#EAEAEA' : '#2D3436',
+                    backgroundColor: theme === 'dark' ? '#151A22' : '#FFFFFF',
+                    borderColor: theme === 'dark' ? '#27313D' : '#D8E0E7',
+                    color: theme === 'dark' ? '#F4F7FA' : '#17202A',
                     borderRadius: '12px',
                     fontSize: '11px'
                   }}
                   formatter={(v) => [`₹${v.toLocaleString()}`, "Spend"]}
                 />
-                <Area type="monotone" dataKey="Spend" stroke={theme === 'dark' ? '#FF7E67' : '#ef4444'} fill="url(#ledgerSpend)" strokeWidth={2} />
+                <Area type="monotone" dataKey="Spend" stroke={theme === 'dark' ? '#F87171' : '#DC2626'} fill="url(#ledgerSpend)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -371,7 +371,7 @@ export const TransactionLedgerView = () => {
               setRailFilter('ALL');
               clearLedgerFocus();
             }}
-            className="text-[#FF7E67] border-0 bg-transparent cursor-pointer font-bold"
+            className="text-[#5EEAD4] border-0 bg-transparent cursor-pointer font-bold"
           >
             Clear
           </button>
