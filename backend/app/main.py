@@ -1714,6 +1714,13 @@ def get_payslips(db: Session = Depends(get_db), current_user = Depends(get_curre
     payslips = db.query(Payslip).filter(Payslip.user_id == current_user.id).order_by(Payslip.period_year.desc(), Payslip.period_month.desc()).all()
     return payslips
 
+@app.delete("/api/payslips/purge")
+def purge_payslips(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    from app.models import Payslip
+    db.query(Payslip).filter(Payslip.user_id == current_user.id).delete()
+    db.commit()
+    return {"message": "Payslips purged"}
+
 # ==============================================================================
 # PHASE 5: HOUSEHOLD FINANCIAL OS API ENDPOINTS
 # ==============================================================================

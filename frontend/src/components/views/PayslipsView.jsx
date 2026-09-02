@@ -23,6 +23,7 @@ import {
   ArrowRight, 
   ChevronLeft, 
   ChevronRight,
+  Wallet,
   PiggyBank,
   Sparkles,
   Layers,

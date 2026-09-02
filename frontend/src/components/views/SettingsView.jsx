@@ -197,6 +197,32 @@ export const SettingsView = () => {
     }
   };
 
+  const handlePurgePayslips = async () => {
+    const isConfirmed = await confirm({
+      title: "Purge Payslips",
+      message: "Are you sure you want to permanently delete all payslip data? This action cannot be undone.",
+      confirmText: "Yes, delete everything",
+      isDanger: true
+    });
+    
+    if (!isConfirmed) return;
+    
+    setIsPurging(true);
+    try {
+      const res = await authFetch('/api/payslips/purge', { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('All payslip data has been wiped.');
+        await fetchData();
+      } else {
+        toast.error('Failed to wipe payslips.');
+      }
+    } catch (err) {
+      toast.error('Network error during wipe.');
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-16">
@@ -558,6 +584,33 @@ export const SettingsView = () => {
         </div>
       </div>
 
+      {/* DANGER ZONE */}
+      <div className={`p-4 sm:p-5 rounded-2xl border-0 mb-6 ${style('neu-flat-dark', 'neu-flat-light')}`}>
+        <div className="flex items-center gap-2 mb-4">
+          <div className="p-1.5 rounded-lg bg-red-500/10 text-red-500">
+            <AlertTriangle className="h-4 w-4" />
+          </div>
+          <h2 className={`text-sm font-bold uppercase tracking-wider ${style('text-red-400', 'text-red-600')}`}>
+            Danger Zone
+          </h2>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-red-500/10 bg-red-500/5">
+          <div className="flex flex-col gap-1">
+            <span className={`text-sm font-bold ${style('text-slate-200', 'text-slate-800')}`}>Wipe Payslip Data</span>
+            <span className="text-xs text-slate-400">Permanently delete all imported payslips from the database. This action cannot be undone.</span>
+          </div>
+          <Button 
+            variant="danger" 
+            size="sm" 
+            icon={Trash2} 
+            onClick={handlePurgePayslips}
+            disabled={isPurging}
+          >
+            {isPurging ? 'Purging...' : 'Purge Payslips'}
+          </Button>
+        </div>
+      </div>
 
       {/* Add Bank Account Modal */}
       <AddAccountModal
