@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { TelemetryTerminal } from '../organisms/TelemetryTerminal';
+import { getFinancialContext } from '../../utils/analytics';
+import { formatCurrency } from '../../utils/formatters';
 import { Button } from '../atoms/Button';
 import { Badge } from '../atoms/Badge';
 import { 
@@ -15,7 +17,9 @@ import {
   CheckCircle2, 
   AlertTriangle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Lock,
+  ChevronRight
 } from 'lucide-react';
 
 export const AiAssistantView = () => {
@@ -31,8 +35,13 @@ export const AiAssistantView = () => {
     }
   ]);
   const [inputQuery, setInputQuery] = useState('');
+  const [queryMode, setQueryMode] = useState('Analyze');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
+
+  // Financial Context Computation
+  const finCtx = useMemo(() => getFinancialContext(transactions), [transactions]);
+  const isChatActive = messages.length > 1;
 
   // LLM Configuration State
   const [showLlmConfig, setShowLlmConfig] = useState(false);
@@ -45,13 +54,6 @@ export const AiAssistantView = () => {
   const [ollamaConnected, setOllamaConnected] = useState(false);
   const [aiTestStatus, setAiTestStatus] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null);
-
-  const suggestedPrompts = [
-    "What is my highest expense category this month?",
-    "How much have I spent on food delivery (Swiggy/Zomato)?",
-    "Did I maximize my SBI Cashback 5% online cap?",
-    "What were my utility bill spends across all cards?"
-  ];
 
   // Fetch initial LLM settings
   useEffect(() => {
@@ -133,7 +135,7 @@ export const AiAssistantView = () => {
     const text = queryText || inputQuery;
     if (!text.trim() || loading) return;
 
-    const userMsg = { id: String(Date.now()), role: 'user', content: text.trim() };
+    const userMsg = { id: String(Date.now()), role: 'user', content: text.trim(), mode: queryMode };
     setMessages(prev => [...prev, userMsg]);
     setInputQuery('');
     setLoading(true);
@@ -142,12 +144,17 @@ export const AiAssistantView = () => {
       const res = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim() })
+        body: JSON.stringify({ message: text.trim(), mode: queryMode })
       });
 
       if (res.ok) {
         const data = await res.json();
-        const aiMsg = { id: String(Date.now() + 1), role: 'assistant', content: data.response };
+        const aiMsg = { 
+          id: String(Date.now() + 1), 
+          role: 'assistant', 
+          content: data.response,
+          evidence: data.evidence 
+        };
         setMessages(prev => [...prev, aiMsg]);
       } else {
         const err = await res.json();
@@ -164,6 +171,11 @@ export const AiAssistantView = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePromptClick = (p) => {
+    setInputQuery(p);
+    handleSendMessage(p);
   };
 
   const handleResetChat = () => {
@@ -384,133 +396,274 @@ export const AiAssistantView = () => {
       </div>
       )}
 
-      {/* 3. Conversational Financial RAG Chat Interface */}
-      <div className={`flex flex-col justify-between p-4 sm:p-6 rounded-2xl border-0 shadow-xl transition-all min-h-[420px] sm:min-h-[500px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
+      {/* FINANCIAL COPILOT WORKSPACE */}
+      <div className={`flex flex-col flex-1 pb-20 sm:pb-0`}>
         
-        {/* Chat Header */}
-        <div className="flex items-center justify-between border-b pb-3 border-slate-800/10">
-          <div className="flex items-center gap-2.5">
-            <div className={`p-2 rounded-xl ${style('neu-inset-dark text-[#FF7E67]', 'neu-inset-light text-[#4A90E2]')}`}>
-              <Bot className="h-4 w-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold flex items-center gap-2">
-                WiseRaman Local Financial RAG
-                <span className="text-xs px-2 py-0.5 rounded-md font-bold bg-indigo-500/10 text-indigo-400">
-                  {modelName}
-                </span>
-              </h3>
-              <span className="text-xs text-slate-400 font-normal">
-                Contextualized with {transactions.length} local transactions & pgvector embeddings
-              </span>
+        {/* NEW HEADER & FINANCIAL CONTEXT */}
+        <div className={`rounded-2xl border-0 shadow-lg mb-5 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+          {/* Header */}
+          <div className="p-5 sm:p-6 border-b border-slate-800/10">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${style('neu-inset-dark text-[#FF7E67]', 'neu-inset-light text-[#4A90E2]')}`}>
+                  <Bot className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className={`text-xl font-black tracking-tight flex items-center gap-2 ${style('text-slate-100', 'text-slate-800')}`}>
+                    WiseRaman Financial Copilot
+                  </h2>
+                  <span className="text-xs text-slate-400 font-medium">Your private financial intelligence</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold tracking-wide self-start sm:self-auto">
+                <Lock className="h-3.5 w-3.5" />
+                Private AI · No cloud AI
+              </div>
             </div>
           </div>
 
-          <button
-            onClick={handleResetChat}
-            className={`p-2 rounded-xl border-0 bg-transparent cursor-pointer transition-colors ${style('text-slate-400 hover:text-slate-200', 'text-slate-500 hover:text-slate-800')}`}
-            title="Reset Conversation"
-            aria-label="Reset conversation"
-          >
-            <RotateCcw className="h-4 w-4" />
-          </button>
+          {/* Metric Strip */}
+          <div className="p-5 sm:p-6">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-4">Financial Context</h3>
+            
+            {transactions.length === 0 ? (
+              <div className="py-2 text-sm text-slate-400 italic">
+                Your Financial Copilot is ready. Import a statement to start asking questions about your finances.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6">
+                <div className="flex flex-col">
+                  <span className={`text-lg sm:text-xl font-black tabular-nums ${style('text-slate-100', 'text-slate-900')}`}>{formatCurrency(finCtx.income)}</span>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Income</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className={`text-lg sm:text-xl font-black tabular-nums ${style('text-slate-100', 'text-slate-900')}`}>{formatCurrency(finCtx.spending)}</span>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Spending</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className={`text-lg sm:text-xl font-black tabular-nums ${finCtx.netFlow < 0 ? 'text-red-400' : style('text-slate-100', 'text-slate-900')}`}>{formatCurrency(finCtx.netFlow)}</span>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Net Flow</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className={`text-lg sm:text-xl font-black tabular-nums ${style('text-slate-100', 'text-slate-900')}`}>{finCtx.savingsRate.toFixed(1)}%</span>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Saving</span>
+                </div>
+              </div>
+            )}
+
+            {/* Freshness Status */}
+            {transactions.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-slate-800/10 flex flex-col sm:flex-row sm:items-center justify-between text-[10px] font-medium text-slate-400 gap-2">
+                <span>{finCtx.period} · {finCtx.transactionCount} transactions</span>
+                {finCtx.dataCompleteness === 'HIGH' ? (
+                  <span className="text-emerald-400/80">● {finCtx.freshnessStatus}</span>
+                ) : (
+                  <span className="text-amber-400/80 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> ⚠ Data may be incomplete · {finCtx.freshnessStatus}</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Message Stream */}
-        <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1 min-h-[260px] max-h-[480px] custom-scrollbar">
-          {messages.map(msg => {
-            const isUser = msg.role === 'user';
-            return (
-              <div key={msg.id} className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
-                <div className={`p-2 rounded-xl flex-shrink-0 ${
-                  isUser 
-                    ? style('bg-[#FF7E67] text-white', 'bg-[#4A90E2] text-white') 
-                    : style('neu-inset-dark text-indigo-400', 'neu-inset-light text-indigo-600')
-                }`}>
-                  {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-                </div>
-
-                <div className={`p-4 rounded-2xl max-w-[85%] text-xs leading-relaxed transition-all ${
-                  isUser 
-                    ? style('neu-flat-dark text-slate-100 font-medium', 'neu-flat-light text-slate-900 font-medium')
-                    : style('neu-inset-dark text-slate-200', 'neu-inset-light text-slate-800')
-                }`}>
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                </div>
-              </div>
-            );
-          })}
-
-          {loading && (
-            <div className="flex items-start gap-3">
-              <div className={`p-2 rounded-xl flex-shrink-0 ${style('neu-inset-dark text-indigo-400', 'neu-inset-light text-indigo-600')}`}>
-                <Bot className="h-4 w-4 animate-spin" />
-              </div>
-              <div className={`p-4 rounded-2xl text-xs flex items-center gap-2 text-slate-400 ${style('neu-inset-dark', 'neu-inset-light')}`}>
-                <Sparkles className="h-3.5 w-3.5 text-indigo-400 animate-pulse" />
-                <span>Searching vector database & formulating response...</span>
-              </div>
+        {/* PROACTIVE INSIGHT (Hidden during deep chat) */}
+        {!isChatActive && (
+          <div className={`p-5 mb-5 rounded-2xl border-0 flex items-start gap-4 transition-all ${style('neu-flat-dark border-indigo-500/10', 'neu-flat-light')}`}>
+            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 mt-1 shrink-0">
+              <Sparkles className="h-5 w-5" />
             </div>
-          )}
+            <div className="flex flex-col gap-1.5">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">One thing worth knowing</h3>
+              <p className={`text-sm font-semibold leading-relaxed ${style('text-slate-200', 'text-slate-700')}`}>
+                Personalized financial insights will appear here once WiseRaman has analyzed your spending patterns over time.
+              </p>
+            </div>
+          </div>
+        )}
 
-          <div ref={messagesEndRef} />
-        </div>
+        {/* SUGGESTED PROMPTS (Hidden during deep chat) */}
+        {!isChatActive && (
+          <div className={`p-6 rounded-2xl border-0 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-5">What would you like to know?</h3>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">
+              
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Understand</span>
+                <button onClick={() => handlePromptClick("Where did my money go this month?")} className={`text-left text-sm py-1.5 transition-colors bg-transparent border-0 cursor-pointer ${style('text-slate-300 hover:text-indigo-400', 'text-slate-600 hover:text-indigo-600')}`}>Where did my money go?</button>
+                <button onClick={() => handlePromptClick("Why did my spending increase?")} className={`text-left text-sm py-1.5 transition-colors bg-transparent border-0 cursor-pointer ${style('text-slate-300 hover:text-indigo-400', 'text-slate-600 hover:text-indigo-600')}`}>Why did spending increase?</button>
+              </div>
 
-        {/* Suggested Prompts & Input Bar */}
-        <div className="flex flex-col gap-3 pt-3 border-t border-slate-800/10">
-          
-          {/* Prompt Chips */}
-          <div className="flex items-center flex-wrap gap-2 pb-1">
-            {suggestedPrompts.map((p, idx) => (
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Optimize</span>
+                <button onClick={() => handlePromptClick("Where can I save money?")} className={`text-left text-sm py-1.5 transition-colors bg-transparent border-0 cursor-pointer ${style('text-slate-300 hover:text-indigo-400', 'text-slate-600 hover:text-indigo-600')}`}>Where can I save money?</button>
+                <button onClick={() => handlePromptClick("What expenses can I reduce?")} className={`text-left text-sm py-1.5 transition-colors bg-transparent border-0 cursor-pointer ${style('text-slate-300 hover:text-indigo-400', 'text-slate-600 hover:text-indigo-600')}`}>What expenses can I reduce?</button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Cards</span>
+                <button onClick={() => handlePromptClick("Did I maximize my cashback limits?")} className={`text-left text-sm py-1.5 transition-colors bg-transparent border-0 cursor-pointer ${style('text-slate-300 hover:text-indigo-400', 'text-slate-600 hover:text-indigo-600')}`}>Did I maximize cashback?</button>
+                <button onClick={() => handlePromptClick("Which card should I use for groceries?")} className={`text-left text-sm py-1.5 transition-colors bg-transparent border-0 cursor-pointer ${style('text-slate-300 hover:text-indigo-400', 'text-slate-600 hover:text-indigo-600')}`}>Which card should I use?</button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Cash Flow</span>
+                <button onClick={() => handlePromptClick("What payments are coming up?")} className={`text-left text-sm py-1.5 transition-colors bg-transparent border-0 cursor-pointer ${style('text-slate-300 hover:text-indigo-400', 'text-slate-600 hover:text-indigo-600')}`}>What payments are coming?</button>
+                <button onClick={() => handlePromptClick("How much cash will I have left at month end?")} className={`text-left text-sm py-1.5 transition-colors bg-transparent border-0 cursor-pointer ${style('text-slate-300 hover:text-indigo-400', 'text-slate-600 hover:text-indigo-600')}`}>How much will I have left?</button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* CHAT MESSAGES */}
+        {isChatActive && (
+          <div className={`flex flex-col flex-1 p-4 sm:p-6 rounded-2xl border-0 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+            <div className="flex items-center justify-between border-b pb-3 border-slate-800/10 mb-4">
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Conversation</h3>
               <button
-                key={idx}
-                type="button"
-                onClick={() => handleSendMessage(p)}
-                className={`text-xs px-3 py-1.5 rounded-xl border-0 cursor-pointer transition-all font-medium ${style(
-                  'neu-inset-dark text-slate-300 hover:text-white',
-                  'neu-inset-light text-slate-700 hover:text-black'
-                )}`}
+                onClick={handleResetChat}
+                className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border-0 bg-transparent cursor-pointer transition-colors ${style('text-slate-400 hover:text-slate-200', 'text-slate-500 hover:text-slate-800')}`}
+                title="Reset Conversation"
               >
-                {p}
+                <RotateCcw className="h-3 w-3" /> Reset
               </button>
-            ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-5 pr-1 min-h-[300px] max-h-[500px] custom-scrollbar">
+              {messages.map((msg, index) => {
+                const isUser = msg.role === 'user';
+                
+                // Skip the initial welcome message if we have actual chat history, to save space.
+                if (!isUser && index === 0 && isChatActive) return null;
+
+                if (isUser) {
+                  return (
+                    <div key={msg.id} className="flex items-start gap-3 flex-row-reverse">
+                      <div className={`p-2 rounded-xl flex-shrink-0 ${style('bg-[#FF7E67] text-white', 'bg-[#4A90E2] text-white')}`}>
+                        <User className="h-4 w-4" />
+                      </div>
+                      <div className={`p-4 rounded-2xl max-w-[85%] text-xs leading-relaxed transition-all ${style('neu-flat-dark text-slate-100 font-medium', 'neu-flat-light text-slate-900 font-medium')}`}>
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Assistant message rendering (Evidence-capable)
+                const hasEvidence = msg.evidence && typeof msg.evidence === 'object';
+
+                return (
+                  <div key={msg.id} className="flex items-start gap-3">
+                    <div className={`p-2 rounded-xl flex-shrink-0 ${style('neu-inset-dark text-indigo-400', 'neu-inset-light text-indigo-600')}`}>
+                      <Bot className="h-4 w-4" />
+                    </div>
+
+                    <div className="flex flex-col gap-2 max-w-[90%] sm:max-w-[85%]">
+                      {/* Main Text Response */}
+                      <div className={`p-4 rounded-2xl text-xs leading-relaxed transition-all ${style('neu-inset-dark text-slate-200', 'neu-inset-light text-slate-800')}`}>
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      </div>
+
+                      {/* Evidence Package Renderer */}
+                      {hasEvidence && (
+                        <div className={`mt-1 p-3 rounded-xl border-l-2 border-indigo-500/50 flex flex-col gap-2 ${style('bg-slate-900/40 text-slate-300', 'bg-slate-100 text-slate-700')}`}>
+                          <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-400">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Deterministic calculation · {msg.evidence.transactionCount || 0} transactions</span>
+                          </div>
+                          <details className="group">
+                            <summary className="text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-pointer list-none flex items-center gap-1 hover:text-slate-200 transition-colors select-none">
+                              <ChevronRight className="h-3.5 w-3.5 group-open:rotate-90 transition-transform" />
+                              How I know this
+                            </summary>
+                            <div className="mt-3 pl-4 border-l border-slate-700/50 flex flex-col gap-3 text-xs">
+                              {msg.evidence.calculation && (
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[10px] uppercase text-slate-500 font-bold">Calculation</span>
+                                  <span className="font-mono text-indigo-300">{msg.evidence.calculation.formula}</span>
+                                </div>
+                              )}
+                              {msg.evidence.sources && msg.evidence.sources.length > 0 && (
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[10px] uppercase text-slate-500 font-bold">Sources</span>
+                                  <span className="text-slate-400">{msg.evidence.sources.length} matching transactions</span>
+                                </div>
+                              )}
+                            </div>
+                          </details>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {loading && (
+                <div className="flex items-start gap-3">
+                  <div className={`p-2 rounded-xl flex-shrink-0 ${style('neu-inset-dark text-indigo-400', 'neu-inset-light text-indigo-600')}`}>
+                    <Bot className="h-4 w-4 animate-spin" />
+                  </div>
+                  <div className={`p-4 rounded-2xl text-xs flex items-center gap-2 text-slate-400 ${style('neu-inset-dark', 'neu-inset-light')}`}>
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-400 animate-pulse" />
+                    <span>Analyzing financial context...</span>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
           </div>
+        )}
 
-          {/* Input Box */}
-          <form 
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSendMessage();
-            }}
-            className="flex items-center gap-2"
-          >
-            <input
-              type="text"
-              placeholder="Ask about spends, limits, or cashflow…"
-              value={inputQuery}
-              onChange={e => setInputQuery(e.target.value)}
-              disabled={loading}
-              enterKeyHint="send"
-              className={`flex-1 min-h-11 rounded-xl px-4 py-3 text-sm focus:outline-none border-0 transition-all ${style(
-                'neu-inset-dark text-[#EAEAEA]',
-                'neu-inset-light text-[#2D3436]'
-              )}`}
-            />
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={!inputQuery.trim() || loading}
-              icon={Send}
-              className="min-h-11"
+        {/* INPUT COMPOSER (Anchored bottom on mobile) */}
+        <div className="fixed sm:relative bottom-[70px] sm:bottom-0 left-0 right-0 px-4 sm:px-0 sm:pt-4 z-30 pointer-events-none">
+          <div className={`pointer-events-auto p-2 sm:p-3 rounded-2xl border-0 shadow-2xl sm:shadow-none transition-all ${style('neu-flat-dark bg-[#1A1A2E]/95 sm:bg-transparent backdrop-blur-md', 'neu-flat-light bg-[#E0E5EC]/95 sm:bg-transparent backdrop-blur-md')}`}>
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendMessage();
+              }}
+              className="flex items-center gap-2"
             >
-              <span className="hidden sm:inline">Ask AI</span>
-            </Button>
-          </form>
-
+              <div className={`flex-1 flex flex-col sm:flex-row sm:items-center rounded-xl p-1.5 transition-all ${style('neu-inset-dark', 'neu-inset-light')}`}>
+                <div className="px-2 py-1.5 sm:py-0 border-b sm:border-b-0 sm:border-r border-slate-700/30 flex shrink-0">
+                  <select
+                    value={queryMode}
+                    onChange={e => setQueryMode(e.target.value)}
+                    className={`bg-transparent text-[10px] font-bold uppercase tracking-widest focus:outline-none cursor-pointer ${style('text-indigo-400', 'text-indigo-600')}`}
+                    title="Analysis Mode Hint"
+                  >
+                    <option value="Analyze">Analyze ▾</option>
+                    <option value="CashFlow">Cash Flow ▾</option>
+                    <option value="Cards">Cards ▾</option>
+                    <option value="Search">Search ▾</option>
+                  </select>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Ask WiseRaman anything about your finances..."
+                  value={inputQuery}
+                  onChange={e => setInputQuery(e.target.value)}
+                  disabled={loading}
+                  enterKeyHint="send"
+                  className={`flex-1 min-h-[40px] px-3 py-2 text-sm focus:outline-none border-0 bg-transparent ${style('text-slate-200', 'text-slate-800')}`}
+                />
+              </div>
+              
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={!inputQuery.trim() || loading}
+                className="min-h-[52px] sm:min-h-[48px] px-4 rounded-xl flex items-center justify-center shrink-0"
+                aria-label="Send query"
+              >
+                <Send className="h-5 w-5" />
+              </Button>
+            </form>
+          </div>
         </div>
 
       </div>
-
     </div>
   );
 };
