@@ -32,10 +32,22 @@ def extract_pdf_pages_text(file_bytes: bytes, password: Optional[str] = None) ->
     Extracts text from each PDF page. Supports password-protected PDFs.
     If a page has no selectable font glyphs (vector curves/scanned),
     falls back to rendering and OCR via Tesseract.
+    
+    Enforces Phase D Sandboxing Limits:
+    - Max Size: 10MB
+    - Max Pages: 50
+    - OCR Timeout: 30s per page
     """
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise ValueError("PDF file exceeds 10MB sandboxing limit.")
+        
     pages_text = []
     try:
         with pdfplumber.open(io.BytesIO(file_bytes), password=password) as pdf:
+            if len(pdf.pages) > 50:
+                raise ValueError(f"PDF exceeds 50-page sandboxing limit (found {len(pdf.pages)}).")
+                
             for idx, page in enumerate(pdf.pages):
                 t = page.extract_text() or ""
                 if len(t.strip()) < 15:
@@ -51,14 +63,22 @@ def extract_pdf_pages_text(file_bytes: bytes, password: Optional[str] = None) ->
                         gray = img.convert('L')
                         enhanced = ImageEnhance.Contrast(gray).enhance(2.0)
                         
-                        ocr_t = pytesseract.image_to_string(enhanced)
+                        ocr_t = pytesseract.image_to_string(enhanced, timeout=30) # Enforce OCR 30s timeout
                         logger.info(f"OCR successfully extracted {len(ocr_t)} characters from page {idx+1}")
                         pages_text.append(ocr_t)
+                    except pytesseract.TesseractError as e:
+                        logger.error(f"OCR fallback failed on page {idx+1}: {e}")
+                        pages_text.append(t)
+                    except RuntimeError as e: # Timeout error is a RuntimeError from pytesseract
+                        logger.error(f"OCR fallback timed out after 30s on page {idx+1}: {e}")
+                        pages_text.append(t)
                     except Exception as ocr_err:
                         logger.error(f"OCR fallback failed on page {idx+1}: {ocr_err}")
                         pages_text.append(t)
                 else:
                     pages_text.append(t)
+    except ValueError:
+        raise
     except pdfplumber.pdfminer.pdfdocument.PDFPasswordIncorrect:
         raise ValueError("PDF is password-protected. Please provide the correct password.")
     except Exception as e:
@@ -666,7 +686,8 @@ def extract_and_categorize_with_light_llm(
     """
     Sends raw statement text to a lightweight Ollama model with strict schema constraints.
     """
-    url = (ollama_url or settings.OLLAMA_URL).rstrip("/")
+    from app.ai import find_working_ollama_url
+    url = (ollama_url or find_working_ollama_url()).rstrip("/")
     llm = model or settings.LLM_MODEL
     schema = StatementExtractionResponse.model_json_schema()
 
@@ -722,7 +743,8 @@ def process_statement_with_lightweight_llm(
     """
     Reads PDF text, breaks it into lightweight chunks, and extracts structured transactions.
     """
-    url = (ollama_url or settings.OLLAMA_URL).rstrip("/")
+    from app.ai import find_working_ollama_url
+    url = (ollama_url or find_working_ollama_url()).rstrip("/")
     llm = model or settings.LLM_MODEL
     ext = filename.lower().split('.')[-1]
     full_text = ""
@@ -1096,6 +1118,42 @@ def parse_statement(
                 statement_summary["opening_balance"] = statement_summary.get("opening_balance") or fallback.get("opening_balance")
         elif fallback:
             transactions = fallback
+
+    # Phase 1.3: UPI Intelligence & Merchant Parsing
+    def enhance_upi_transaction(txn):
+        raw_text = txn.get("raw_text", "").upper()
+        desc = txn.get("description", "").upper()
+        
+        # Simple check for UPI
+        if "UPI" in raw_text or "UPI" in desc:
+            txn["subcategory"] = "UPI"
+            
+            # Try to extract UPI ID (VPA)
+            upi_match = re.search(r'([A-Z0-9\.\-_]+@[A-Z0-9A-Z]+)', raw_text)
+            if upi_match:
+                upi_id = upi_match.group(1).lower()
+                txn["reference_id"] = txn.get("reference_id") or upi_id
+                
+                # P2M vs P2P Heuristic
+                merchant_keywords = ["RETAIL", "STORE", "PAYTM", "BHARATPE", "ENTERPRISE", "LTD", "PVT", "ZOMATO", "SWIGGY", "AMAZON", "FLIPKART", "UBER", "OLA", "CRED", "SUPERMARKET", "MART", "FOOD"]
+                
+                is_p2m = any(k in raw_text for k in merchant_keywords) or any(k in upi_id for k in ["merchant", "biz", "paytm", "bharatpe"])
+                
+                if is_p2m:
+                    txn["category"] = "Shopping/Merchant"
+                else:
+                    txn["category"] = "Transfer"
+                    
+                # Extract Sender/Receiver Name heuristically
+                parts = [p.strip() for p in raw_text.split('/')]
+                for i, p in enumerate(parts):
+                    if p in ("UPI", "P2A", "P2M", "REV") and i + 1 < len(parts):
+                        if "@" not in parts[i+1] and len(parts[i+1]) > 2:
+                            txn["description"] = parts[i+1].title()
+                            break
+        return txn
+
+    transactions = [enhance_upi_transaction(tx) for tx in transactions]
         
     return {
         "transactions": transactions,
@@ -1103,3 +1161,63 @@ def parse_statement(
         "opening_balance": statement_summary.get("opening_balance"),
         "closing_balance": statement_summary.get("total_amount_due")
     }
+
+def parse_payslip(file_bytes, password: Optional[str] = None):
+    """Parse Payslip PDF using Ollama LLM."""
+    pages = extract_pdf_pages_text(file_bytes, password=password)
+    text = "\n".join(pages)
+    
+    prompt = f"""
+You are an expert payslip parser. Extract the following information from this Indian payslip text and return it strictly as valid JSON.
+Do NOT include any markdown formatting, backticks, or other text outside the JSON object.
+
+Extract these fields:
+- employee_id (string or null)
+- employee_name (string or null)
+- company_name (string or null)
+- period_month (integer, 1-12 representing the month)
+- period_year (integer, e.g., 2025)
+- bank_account_no (string or null)
+- basic_salary (number, defaults to 0)
+- hra (number, defaults to 0)
+- special_allowance (number, defaults to 0)
+- other_earnings (number, defaults to 0)
+- gross_earnings (number)
+- provident_fund (number, defaults to 0)
+- professional_tax (number, defaults to 0)
+- income_tax_tds (number, defaults to 0)
+- other_deductions (number, defaults to 0)
+- gross_deductions (number)
+- net_pay (number)
+
+Text to parse:
+{text}
+"""
+    try:
+        response = requests.post(
+            f"{settings.OLLAMA_URL}/api/generate",
+            json={
+                "model": "qwen2.5:3b",
+                "prompt": prompt,
+                "stream": False,
+                "format": "json"
+            },
+            timeout=180
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        # Sometimes Ollama returns backticks even with format=json
+        resp_text = data["response"].strip()
+        if resp_text.startswith("```json"):
+            resp_text = resp_text[7:]
+        if resp_text.startswith("```"):
+            resp_text = resp_text[3:]
+        if resp_text.endswith("```"):
+            resp_text = resp_text[:-3]
+            
+        parsed_json = json.loads(resp_text)
+        return parsed_json
+    except Exception as e:
+        logger.error(f"Error parsing payslip via LLM: {str(e)}")
+        raise ValueError(f"Failed to parse payslip using LLM: {str(e)}")

@@ -9,6 +9,12 @@
 
 **WiseRaman** is a local-first, privacy-focused personal finance intelligence platform tailored specifically for Indian banking ecosystems (SBI, HDFC, Axis, Federal Bank, OneCard, UPI, NEFT, IMPS). It parses complex multi-page PDF statements with deterministic balance verification, embeds transaction narrations via `pgvector`, and provides local RAG querying powered by Ollama.
 
+### 🚀 Recent Updates
+- ✅ **PostgreSQL Schema Stability:** Migrated live schemas to natively support UPI attributes, document provenance, and vector embeddings.
+- ✅ **Security Hardened:** Secured destructive developer endpoints and upgraded JWT token security.
+- ✅ **Resilient UI:** Added global React Error Boundaries and removed memory leaks from background file uploads.
+- ✅ **Rule Engine Sync:** Custom categorization rules are now fully synced and persisted via the FastAPI backend.
+
 </div>
 
 ---
@@ -25,7 +31,14 @@
   - Validates `Opening Balance + Deposits - Withdrawals = Closing Balance`.
   - Blocks duplicate statement uploads using cryptographic SHA-256 fingerprinting.
 
-### 2. 🤖 Local AI & Semantic RAG Assistant
+### 2. 💼 Salary Payslips & Tax Intelligence
+- **AI-Powered Payslip Extraction:** Powered by local Ollama (`qwen2.5:3b`) with structured JSON schema output to accurately parse employer salary slips (Basic, HRA, Allowances, PF, PT, TDS, and Net Pay).
+- **Automated Ledger Linking:** Intelligently matches payslip Net Pay to salary credit transactions in your bank accounts and auto-links them.
+- **Interactive Drill-Down Cards:** Expandable payslip history cards detailing the full breakdown of earnings, statutory deductions, employee metadata, and in-hand take-home ratios.
+- **Search, Filters & Pagination:** Easily query past payslips by employer, calendar year, or employee ID with configurable page sizes and sorting.
+- **Deduction Trajectory Charts:** Visual tracking of gross income vs net take-home and accumulated Provident Fund (EPF) and tax withholdings over time.
+
+### 3. 🤖 Local AI & Semantic RAG Assistant
 - **100% Private & Local:** Powered by **Ollama** running locally on your hardware.
 - **Embedding Search:** 768-dimensional vector embeddings generated using `nomic-embed-text` stored in PostgreSQL with `pgvector`.
 - **Natural Language Financial Agent:** Ask questions like:
@@ -33,14 +46,15 @@
   - *"What were my top recurring utility payments in Q2?"*
 - **Indian Merchant Engine:** Fast deterministic mapping for 100+ Indian merchants (Swiggy, Zomato, Blinkit, Zepto, CRED, IRCTC, D-Mart, etc.).
 
-### 3. 📊 Advanced Financial Intelligence & Analytics
+### 4. 📊 Advanced Financial Intelligence & Analytics
 - **Burn Rate & Net Savings %:** Dynamic monthly category stacking with net savings rate tracking.
 - **Calendar Spend Heatmap:** GitHub-style 365-day intensity grid identifying weekend spending spikes.
 - **Interactive Category Drilldown:** Deep-dive modal with merchant rankings, 6-month sparklines, and raw transaction ledgers.
 - **Mandate Watchdog:** Automated recurring bill and subscription detector with impending due date alerts.
 - **Payment Rail Split:** Visual breakdown of UPI vs Credit Card vs NetBanking outflows.
 
-### 4. 💳 Credit Card & Account Portfolio Management
+### 5. 💳 Credit Card & Account Portfolio Management
+- **Unified Multi-File Ingestion:** Universal modal supporting batch uploads of bank statements and salary payslips with non-blocking background progress tracking.
 - **Credit Card Cycle Tracker:** Tracks unbilled spends, total dues, statement dates, and payment due dates.
 - **Historical Archive Vault:** Dedicated archive storage for legacy data exports (e.g. Walnut / Axio) isolated from active living expenses.
 - **Neumorphic & Minimalist Themes:** Custom Dark and Light neumorphic design system.

@@ -9,7 +9,7 @@ import { CreditCard, X, Check } from 'lucide-react';
 
 export const EditCardModal = ({ isOpen, onClose, card }) => {
   const { style } = useTheme();
-  const { banks, accounts, fetchData } = useFinance();
+  const { banks, accounts, fetchData , authFetch} = useFinance();
   const { toast } = useToast();
 
   const [cardName, setCardName] = useState('');
@@ -41,7 +41,7 @@ export const EditCardModal = ({ isOpen, onClose, card }) => {
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/cards/${card.id}`, {
+      const res = await authFetch(`/api/cards/${card.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

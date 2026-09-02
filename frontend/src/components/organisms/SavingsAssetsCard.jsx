@@ -49,15 +49,15 @@ export const SavingsAssetsCard = () => {
                   key={acc.id}
                   className={`p-3 rounded-xl flex items-center justify-between border-0 transition-all ${style('neu-inset-dark', 'neu-inset-light')}`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${style('bg-slate-800/40 text-slate-300', 'bg-slate-200 text-slate-700')}`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`p-2 rounded-lg shrink-0 ${style('bg-slate-800/40 text-slate-300', 'bg-slate-200 text-slate-700')}`}>
                       <Landmark className="h-3.5 w-3.5" />
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs font-bold">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-bold truncate">
                         {acc.name}
                       </span>
-                      <span className="text-xs text-slate-400 font-normal">
+                      <span className="text-xs text-slate-400 font-normal truncate">
                         {bankName} ({maskedNumber})
                       </span>
                     </div>

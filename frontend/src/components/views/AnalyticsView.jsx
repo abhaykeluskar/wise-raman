@@ -221,15 +221,24 @@ export const AnalyticsView = () => {
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 pb-12">
       
       {/* Header & Flow Filters */}
-      <div className={`p-4 sm:p-6 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-0 ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <div className="flex items-center gap-3">
-          <Activity className="h-6 w-6 text-[#FF7E67]" />
-        <div className="flex flex-col gap-1">
-          <h2 className={`text-xl font-bold ${style('text-white', 'text-slate-800')}`}>Financial Intelligence</h2>
-          <span className="text-[11px] font-semibold text-slate-500">
-            Showing {filteredTxs.length} {flowFilter === 'OUTFLOW' ? 'outflow' : flowFilter === 'INFLOW' ? 'inflow' : flowFilter === 'TRANSFERS' ? 'transfer' : ''} transactions
-          </span>
-        </div>
+      <div className={`p-5 sm:p-6 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-0 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+        <div className="flex items-center gap-3.5">
+          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#FF7E67]')}`}>
+            <Activity className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-white', 'text-slate-800')}`}>
+                Financial Intelligence
+              </h1>
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/20">
+                {filteredTxs.length} Transactions
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">
+              Spending velocity, burn rate, payment rail analytics, and category distributions
+            </p>
+          </div>
         </div>
         
         <div className={`flex flex-wrap p-1 rounded-xl gap-1 ${style('bg-[#1a1a2e]', 'bg-slate-200')} self-start sm:self-auto`}>
@@ -482,7 +491,7 @@ export const AnalyticsView = () => {
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Average Daily Burn Rate</h3>
           </div>
           
-          <div className={`text-4xl font-black ${style('text-white', 'text-slate-800')}`}>
+          <div className={`text-3xl lg:text-4xl font-black ${style('text-white', 'text-slate-800')}`}>
             ₹{velocityMetrics.dailyBurnRate.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             <span className="text-sm text-slate-500 font-medium ml-2">/ day</span>
           </div>

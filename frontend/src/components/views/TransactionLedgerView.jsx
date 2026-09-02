@@ -13,6 +13,7 @@ import {
   Trash2, 
   Check, 
   X, 
+  Lock,
   Sparkles, 
   TrendingDown, 
   CheckCircle2, 
@@ -33,7 +34,7 @@ import {
 
 export const TransactionLedgerView = () => {
   const { theme, style } = useTheme();
-  const { transactions, accounts, banks, categories, fetchData, setTransactions, ledgerFocus, clearLedgerFocus } = useFinance();
+  const { transactions, accounts, banks, categories, fetchData, setTransactions, ledgerFocus, clearLedgerFocus , authFetch} = useFinance();
 
   const [selectedBankId, setSelectedBankId] = useState('ALL');
   const [selectedAccountFilter, setSelectedAccountFilter] = useState('ALL');
@@ -185,7 +186,7 @@ export const TransactionLedgerView = () => {
 
   const handleSaveEdit = async (txId) => {
     try {
-      const res = await fetch(`/api/transactions/${txId}`, {
+      const res = await authFetch(`/api/transactions/${txId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -220,7 +221,7 @@ export const TransactionLedgerView = () => {
     if (!isConfirmed) return;
 
     try {
-      const res = await fetch(`/api/transactions/${txId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/transactions/${txId}`, { method: 'DELETE' });
       if (res.ok) {
         setTransactions(prev => prev.filter(t => t.id !== txId));
         toast.success('Transaction deleted.');
@@ -237,7 +238,7 @@ export const TransactionLedgerView = () => {
 
   const handleVerify = async (txId, category) => {
     try {
-      const res = await fetch(`/api/transactions/${txId}`, {
+      const res = await authFetch(`/api/transactions/${txId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category, verified: true })
@@ -253,15 +254,37 @@ export const TransactionLedgerView = () => {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 pb-12">
       
+      {/* Header Banner */}
+      <div className={`p-5 sm:p-6 rounded-3xl border-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+        <div className="flex items-center gap-3.5">
+          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')}`}>
+            <ListFilter className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-white', 'text-slate-800')}`}>
+                Transaction Ledger
+              </h1>
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/20">
+                {filteredTransactions.length} Transactions
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">
+              Normalized ledger with UPI intelligence, merchant categorization, and audit trail
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 1. Horizontal Bank Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full custom-scrollbar">
+      <div className="flex items-center flex-wrap gap-2 max-w-full">
         <button
           type="button"
           onClick={() => setSelectedBankId('ALL')}
           className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
             selectedBankId === 'ALL'
-              ? style('neu-flat-dark text-[#FF7E67]', 'bg-[#FF7E67] text-white', 'neu-flat-light text-[#4A90E2]', 'bg-[#4A90E2] text-white')
-              : style('text-slate-400 hover:text-slate-200', 'text-slate-600 hover:text-slate-900')
+              ? style('neu-flat-dark text-[#FF7E67] ring-1 ring-orange-500/30', 'bg-[#FF7E67] text-white shadow-md')
+              : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
           }`}
         >
           All Accounts Ledger
@@ -276,8 +299,8 @@ export const TransactionLedgerView = () => {
               onClick={() => setSelectedBankId(b.id)}
               className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
                 isSelected
-                  ? style('neu-flat-dark text-[#FF7E67]', 'bg-[#FF7E67] text-white', 'neu-flat-light text-[#4A90E2]', 'bg-[#4A90E2] text-white')
-                  : style('text-slate-400 hover:text-slate-200', 'text-slate-600 hover:text-slate-900')
+                  ? style('neu-flat-dark text-[#FF7E67] ring-1 ring-orange-500/30', 'bg-[#FF7E67] text-white shadow-md')
+                  : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
               }`}
             >
               {b.name}
@@ -366,7 +389,7 @@ export const TransactionLedgerView = () => {
           />
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
           <select
             value={flowFilter}
             onChange={e => setFlowFilter(e.target.value)}
@@ -457,12 +480,14 @@ export const TransactionLedgerView = () => {
                   if (isEditing) {
                     return (
                       <tr key={tx.id} className={style('bg-slate-800/50', 'bg-slate-100')}>
-                        <td className="py-2.5 px-3">
+                        <td className="py-2.5 px-3 flex items-center gap-1 text-slate-400">
+                          <Lock className="h-3 w-3 text-slate-500" title="Immutable Financial Truth" />
                           <input
                             type="date"
                             value={editDate}
-                            onChange={e => setEditDate(e.target.value)}
-                            className="rounded-lg px-2 py-1 text-xs border-0 bg-slate-900 text-white"
+                            readOnly
+                            disabled
+                            className="rounded-lg px-2 py-1 text-xs border-0 bg-slate-900/50 text-slate-400 cursor-not-allowed"
                           />
                         </td>
                         <td className="py-2.5 px-3">
@@ -487,13 +512,15 @@ export const TransactionLedgerView = () => {
                             ))}
                           </select>
                         </td>
-                        <td className="py-2.5 px-3">
+                        <td className="py-2.5 px-3 flex items-center gap-1 justify-end text-slate-400">
+                          <Lock className="h-3 w-3 text-slate-500" title="Immutable Financial Truth" />
                           <input
                             type="number"
                             step="0.01"
                             value={editAmount}
-                            onChange={e => setEditAmount(e.target.value)}
-                            className="w-24 rounded-lg px-2 py-1 text-xs border-0 bg-slate-900 text-white text-right"
+                            readOnly
+                            disabled
+                            className="w-24 rounded-lg px-2 py-1 text-xs border-0 bg-slate-900/50 text-slate-400 text-right cursor-not-allowed"
                           />
                         </td>
                         <td className="py-2.5 px-3 text-center" colSpan={2}>
@@ -608,12 +635,12 @@ export const TransactionLedgerView = () => {
 
               return (
                 <div key={tx.id} className={`p-4 rounded-xl flex flex-col gap-2 ${style('bg-slate-800/30', 'bg-slate-50')}`}>
-                  <div className="flex justify-between items-start">
-                    <div className="flex flex-col">
-                      <span className={`font-bold text-sm truncate max-w-[200px] ${style('text-slate-100', 'text-slate-800')}`} title={tx.description}>{tx.description}</span>
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex flex-col min-w-0">
+                      <span className={`font-bold text-sm truncate ${style('text-slate-100', 'text-slate-800')}`} title={tx.description}>{tx.description}</span>
                       <span className="text-xs text-slate-400">{formatDate(tx.date, 'short')} &bull; {acc?.name || 'Bank Account'}</span>
                     </div>
-                    <span className={`font-extrabold text-sm ${isIncome ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span className={`font-extrabold text-sm whitespace-nowrap shrink-0 ${isIncome ? 'text-emerald-400' : 'text-red-400'}`}>
                       {isIncome ? `+${formatCurrency(amt)}` : `-${formatCurrency(Math.abs(amt))}`}
                     </span>
                   </div>

@@ -3,21 +3,22 @@ import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { Button } from '../atoms/Button';
 import { Select } from '../atoms/Select';
-import { Upload, X, FileText } from 'lucide-react';
+import { Upload, X, FileText, Briefcase, Landmark } from 'lucide-react';
 
 export const UploadStatementModal = ({ isOpen, onClose }) => {
   const { style } = useTheme();
-  const { banks, accounts, startStatementUpload } = useFinance();
+  const { banks, accounts, startDocumentUpload } = useFinance();
 
+  const [documentType, setDocumentType] = useState('STATEMENT'); // 'STATEMENT' or 'PAYSLIP'
   const [fileType, setFileType] = useState('PDF');
   const [bankId, setBankId] = useState('');
   const [accountId, setAccountId] = useState('');
   const [engine, setEngine] = useState('Local AI LLM (Fallback)');
   const [pdfPassword, setPdfPassword] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
   const handleClose = () => {
-    setSelectedFile(null);
+    setSelectedFiles([]);
     setPdfPassword('');
     setAccountId('');
     setBankId('');
@@ -28,15 +29,17 @@ export const UploadStatementModal = ({ isOpen, onClose }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!selectedFile || !accountId || !bankId) return;
+    if (selectedFiles.length === 0) return;
+    if (documentType === 'STATEMENT' && (!accountId || !bankId)) return;
 
     // Immediately trigger background upload and close modal
-    startStatementUpload({
-      bankId,
-      accountId,
+    startDocumentUpload({
+      documentType,
+      bankId: documentType === 'STATEMENT' ? bankId : undefined,
+      accountId: documentType === 'STATEMENT' ? accountId : undefined,
       fileType,
-      processingEngine: engine,
-      file: selectedFile,
+      processingEngine: documentType === 'PAYSLIP' ? 'Local AI LLM (Fallback)' : engine,
+      files: selectedFiles,
       pdfPassword: pdfPassword.trim()
     });
 
@@ -58,7 +61,7 @@ export const UploadStatementModal = ({ isOpen, onClose }) => {
             </div>
             <div>
               <h3 className="text-sm font-bold">
-                Import Bank Statement
+                Import Document
               </h3>
               <span className="text-xs text-slate-400 font-normal">
                 Non-blocking background extraction
@@ -75,6 +78,24 @@ export const UploadStatementModal = ({ isOpen, onClose }) => {
           </button>
         </div>
 
+        {/* Tab Selection */}
+        <div className={`flex items-center p-1 rounded-xl ${style('neu-inset-dark', 'neu-inset-light')}`}>
+          <button 
+            type="button"
+            className={`flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-bold transition-all border-0 cursor-pointer ${documentType === 'STATEMENT' ? style('neu-flat-dark text-white', 'neu-flat-light text-slate-800') : 'bg-transparent text-slate-400 hover:text-slate-300'}`}
+            onClick={() => setDocumentType('STATEMENT')}
+          >
+            <Landmark className="h-3.5 w-3.5" /> Bank Statement
+          </button>
+          <button 
+            type="button"
+            className={`flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-bold transition-all border-0 cursor-pointer ${documentType === 'PAYSLIP' ? style('neu-flat-dark text-white', 'neu-flat-light text-slate-800') : 'bg-transparent text-slate-400 hover:text-slate-300'}`}
+            onClick={() => setDocumentType('PAYSLIP')}
+          >
+            <Briefcase className="h-3.5 w-3.5" /> Salary Payslip
+          </button>
+        </div>
+
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           
@@ -84,45 +105,53 @@ export const UploadStatementModal = ({ isOpen, onClose }) => {
             onChange={e => setFileType(e.target.value)}
           >
             <option value="PDF">PDF Document (Digital / Scanned)</option>
-            <option value="CSV">CSV Data File</option>
-            <option value="XLSX">Excel (XLSX)</option>
-            <option value="XLS">Excel (XLS)</option>
+            {documentType === 'STATEMENT' && (
+              <>
+                <option value="CSV">CSV Data File</option>
+                <option value="XLSX">Excel (XLSX)</option>
+                <option value="XLS">Excel (XLS)</option>
+              </>
+            )}
           </Select>
 
-          <Select
-            label="2. Select Bank"
-            value={bankId}
-            onChange={e => {
-              setBankId(e.target.value);
-              setAccountId('');
-            }}
-          >
-            <option value="">-- Select Bank --</option>
-            {filteredBanks.map(b => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </Select>
+          {documentType === 'STATEMENT' && (
+            <>
+              <Select
+                label="2. Select Bank"
+                value={bankId}
+                onChange={e => {
+                  setBankId(e.target.value);
+                  setAccountId('');
+                }}
+              >
+                <option value="">-- Select Bank --</option>
+                {filteredBanks.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </Select>
 
-          <Select
-            label="3. Select Account / Card"
-            value={accountId}
-            onChange={e => setAccountId(e.target.value)}
-            disabled={!bankId}
-          >
-            <option value="">-- Select Account / Card --</option>
-            {filteredAccounts.map(a => (
-              <option key={a.id} value={a.id}>{a.name} ({a.subtype})</option>
-            ))}
-          </Select>
+              <Select
+                label="3. Select Account / Card"
+                value={accountId}
+                onChange={e => setAccountId(e.target.value)}
+                disabled={!bankId}
+              >
+                <option value="">-- Select Account / Card --</option>
+                {filteredAccounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.name} ({a.subtype})</option>
+                ))}
+              </Select>
 
-          <Select
-            label="4. Ingestion Engine"
-            value={engine}
-            onChange={e => setEngine(e.target.value)}
-          >
-            <option value="Standard Algo Parser">⚡ Standard Deterministic Parser (Instant)</option>
-            <option value="Local AI LLM (Fallback)">🧠 Local AI Engine (Qwen2.5:3b - JSON Schema)</option>
-          </Select>
+              <Select
+                label="4. Ingestion Engine"
+                value={engine}
+                onChange={e => setEngine(e.target.value)}
+              >
+                <option value="Standard Algo Parser">⚡ Standard Deterministic Parser (Instant)</option>
+                <option value="Local AI LLM (Fallback)">🧠 Local AI Engine (Qwen2.5:3b - JSON Schema)</option>
+              </Select>
+            </>
+          )}
 
           {fileType === 'PDF' && (
             <div className="flex flex-col gap-1">
@@ -137,26 +166,32 @@ export const UploadStatementModal = ({ isOpen, onClose }) => {
                 className={`w-full rounded-xl px-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
               />
               <span className="text-[10px] text-slate-400">
-                Most Indian bank/card statements are password-protected with PAN or DOB
+                Provide if your {documentType === 'STATEMENT' ? 'bank statement' : 'payslip'} is password-protected.
               </span>
             </div>
           )}
 
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              5. Select Statement File
+              {documentType === 'STATEMENT' ? '5. Select Statement File(s)' : '2. Select Payslip File(s)'}
             </span>
             <input
               type="file"
               required
+              multiple
               accept={
                 fileType === 'PDF' ? '.pdf,application/pdf'
                   : fileType === 'CSV' ? '.csv,text/csv'
                   : '.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
               }
-              onChange={e => setSelectedFile(e.target.files[0])}
+              onChange={e => setSelectedFiles(Array.from(e.target.files))}
               className={`block w-full text-xs text-slate-400 rounded-xl px-3 py-2 border-0 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-600/15 file:text-indigo-400 hover:file:bg-indigo-600/25 file:cursor-pointer ${style('neu-inset-dark', 'neu-inset-light')}`}
             />
+            {selectedFiles.length > 0 && (
+              <span className="text-[10px] font-medium text-emerald-500 mt-1">
+                {selectedFiles.length} file(s) selected
+              </span>
+            )}
           </div>
 
           {/* Footer Buttons */}
@@ -167,9 +202,9 @@ export const UploadStatementModal = ({ isOpen, onClose }) => {
             <Button
               type="submit"
               variant="primary"
-              disabled={!selectedFile || !accountId || !bankId}
+              disabled={selectedFiles.length === 0 || (documentType === 'STATEMENT' && (!accountId || !bankId))}
             >
-              Analyze Statement
+              Analyze {documentType === 'STATEMENT' ? 'Statement' : 'Payslips'}
             </Button>
           </div>
 

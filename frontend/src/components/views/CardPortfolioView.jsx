@@ -24,7 +24,7 @@ import {
 
 export const CardPortfolioView = ({ initialCardId }) => {
   const { style } = useTheme();
-  const { cards, accounts, transactions, statements, banks, fetchData } = useFinance();
+  const { cards, accounts, transactions, statements, banks, fetchData , authFetch} = useFinance();
 
   const [selectedCardId, setSelectedCardId] = useState(() => {
     return initialCardId || (cards[0]?.id ?? null);
@@ -154,7 +154,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
     if (!newCardName.trim()) return;
 
     try {
-      const res = await fetch('/api/cards', {
+      const res = await authFetch('/api/cards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -196,7 +196,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
     if (!isConfirmed) return;
 
     try {
-      const res = await fetch(`/api/cards/${cardId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/cards/${cardId}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success(`Card '${cardName}' removed.`);
         fetchData();
@@ -214,9 +214,39 @@ export const CardPortfolioView = ({ initialCardId }) => {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 pb-12">
       
+      {/* Header Banner */}
+      <div className={`p-5 sm:p-6 rounded-3xl border-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
+        <div className="flex items-center gap-3.5">
+          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#FF7E67]', 'neu-flat-light text-[#4A90E2]')}`}>
+            <CreditCardIcon className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-white', 'text-slate-800')}`}>
+                Credit Card Intelligence
+              </h1>
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/20">
+                {cards.length} Cards
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">
+              Billing cycles, statement dues, 30% utilization guardrails, and reward tracking
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowAddCard(true)}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border-0 cursor-pointer self-start sm:self-auto transition-all ${style('neu-btn-dark text-[#FF7E67]', 'bg-[#4A90E2] text-white')}`}
+        >
+          <Plus className="h-4 w-4" /> Add Card
+        </button>
+      </div>
+
       {/* 1. Card Tabs Navigation Bar */}
       {cards.length === 0 ? (
-        <div className={`p-8 rounded-2xl text-center border-0 ${style('neu-flat-dark', 'neu-flat-light')}`}>
+        <div className={`p-8 rounded-3xl text-center border-0 ${style('neu-flat-dark', 'neu-flat-light')}`}>
           <CreditCardIcon className="h-8 w-8 mx-auto text-slate-500 mb-2" />
           <h3 className="text-sm font-bold">No Registered Cards</h3>
           <p className="text-xs text-slate-500 mt-1">Register your credit cards to track billing cycles and credit limits.</p>
@@ -228,7 +258,7 @@ export const CardPortfolioView = ({ initialCardId }) => {
         </div>
       ) : (
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full custom-scrollbar">
+          <div className="flex items-center flex-wrap gap-2 max-w-full">
             {cards.map(c => {
               const isSelected = activeCard?.id === c.id;
               return (
@@ -238,8 +268,8 @@ export const CardPortfolioView = ({ initialCardId }) => {
                   onClick={() => setSelectedCardId(c.id)}
                   className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
                     isSelected
-                      ? style('neu-flat-dark text-[#FF7E67]', 'bg-[#FF7E67] text-white', 'neu-flat-light text-[#4A90E2]', 'bg-[#4A90E2] text-white')
-                      : style('text-slate-400 hover:text-slate-200', 'text-slate-600 hover:text-slate-900')
+                      ? style('neu-flat-dark text-[#FF7E67] ring-1 ring-orange-500/30', 'bg-[#4A90E2] text-white shadow-md')
+                      : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
                   }`}
                 >
                   {c.card_name}
@@ -370,90 +400,102 @@ export const CardPortfolioView = ({ initialCardId }) => {
       {activeCard && (
         <div className="flex flex-col gap-6">
 
-          {/* Tier 1: Card Header Bar */}
-          <div className={`p-4 px-6 rounded-2xl flex items-center justify-between border-0 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-            <div className="flex items-center gap-3">
-              <NetworkLogo network={activeCard.network} />
-              <h2 className="text-sm font-bold tracking-tight">
-                {activeCard.card_name}
-              </h2>
-              <span className="text-slate-400 text-xs font-medium hidden sm:inline">
-                • Statement Day: <strong className={style('text-slate-200', 'text-slate-700')}>{stmtDay}</strong> • {isStatementVerified ? 'Due Date:' : 'Estimated Due:'} <strong className={style('text-slate-200', 'text-slate-700')}>{dueDateText}</strong>
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setCardToEdit(activeCard)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 transition-colors border-0 bg-transparent cursor-pointer"
-                title="Edit Card Configuration"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => handleDeleteCard(activeCard.id, activeCard.card_name)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors border-0 bg-transparent cursor-pointer"
-                title="Delete Card"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Tier 2: Credit Utilization & Spend-to-Limit Ratio with 30% Marker */}
+          {/* Utilization & Spend-to-Limit Ratio */}
           <div className={`p-6 rounded-2xl border-0 flex flex-col gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Gauge className={`h-4 w-4 ${utilizationPercent > 30 ? 'text-amber-400' : 'text-emerald-400'}`} />
-                <h3 className="text-base font-bold">
-                  Credit Spend-to-Limit Utilization
+                <NetworkLogo network={activeCard.network} />
+                <h3 className="text-base font-bold flex items-center gap-2">
+                  {activeCard.card_name} <span className="text-slate-500 font-medium hidden sm:inline">Utilization</span>
                 </h3>
               </div>
-              <span className="text-xs font-semibold text-slate-400">
-                Cycle Statement Date: <strong className={style('text-slate-200', 'text-slate-700')}>{stmtDay}th of each month</strong>
-              </span>
+              <div className="flex items-center gap-3 justify-between sm:justify-end">
+                <span className="text-xs font-semibold text-slate-400 shrink-0">
+                  Statement Day: <strong className={style('text-slate-200', 'text-slate-700')}>{stmtDay}</strong>
+                </span>
+                <div className="flex items-center gap-1 border-l border-slate-700/50 pl-3">
+                  <button
+                    onClick={() => setCardToEdit(activeCard)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 transition-colors border-0 bg-transparent cursor-pointer"
+                    title="Edit Card Configuration"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteCard(activeCard.id, activeCard.card_name)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors border-0 bg-transparent cursor-pointer"
+                    title="Delete Card"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
             </div>
 
-            {/* Custom Progress Bar with 30% Marker */}
-            <div className="flex flex-col gap-2 mt-2">
-              <div className="flex items-center justify-between text-xs font-bold">
-                <span className={style('text-slate-300', 'text-slate-600')}>
-                  Total Payment: <span className="text-red-400 font-extrabold">{formatCurrency(totalPayment)}</span>
-                </span>
-                <span className={utilizationPercent > 30 ? 'text-amber-400 font-extrabold' : 'text-emerald-400'}>
-                  {utilizationPercent.toFixed(1)}% of {formatCurrency(creditLimit, false)} Limit
-                </span>
+            {/* Payment + Utilisation Chips */}
+            <div className="flex flex-wrap gap-3">
+              {/* Total Payment chip */}
+              <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl ${style('bg-slate-900/60 border border-slate-800/60', 'bg-white/80 border border-slate-200')}`}>
+                <Wallet className="h-4 w-4 text-red-400 shrink-0" />
+                <div className="flex flex-col leading-tight">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Payment Due</span>
+                  <span className="text-sm font-extrabold text-red-400 tabular-nums">{formatCurrency(totalPayment)}</span>
+                </div>
               </div>
+              {/* Utilization chip */}
+              <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl ${style('bg-slate-900/60 border border-slate-800/60', 'bg-white/80 border border-slate-200')}`}>
+                <Gauge className={`h-4 w-4 shrink-0 ${utilizationPercent > 30 ? 'text-amber-400' : 'text-emerald-400'}`} />
+                <div className="flex flex-col leading-tight">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Credit Utilization</span>
+                  <span className={`text-sm font-extrabold tabular-nums ${utilizationPercent > 30 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {utilizationPercent.toFixed(1)}%{' '}
+                    <span className={`text-xs font-semibold ${style('text-slate-400', 'text-slate-500')}`}>
+                      of {formatCurrency(creditLimit, false)} limit
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
 
-              {/* Progress Track with 30% Line */}
-              <div className="relative w-full h-5 rounded-full overflow-hidden bg-slate-950/60 p-0.5 border border-slate-800/80 shadow-inner">
-                {/* 30% Milestone Line */}
-                <div 
-                  className="absolute top-0 bottom-0 w-0.5 bg-amber-400/90 z-20 shadow-[0_0_8px_rgba(251,191,36,0.8)]"
+            {/* Progress Bar + Aligned Labels */}
+            <div className="flex flex-col gap-2">
+              {/* Track */}
+              <div className="relative w-full h-4 rounded-full overflow-hidden bg-slate-950/60 p-[3px] border border-slate-800/80 shadow-inner">
+                {/* 30% Milestone Line — sits at exactly 30% from left */}
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-amber-400/90 z-20 shadow-[0_0_6px_rgba(251,191,36,0.7)]"
                   style={{ left: '30%' }}
                   title="30% Safe Utilization Milestone"
                 />
-                
-                {/* Active Progress Fill */}
-                <div 
+                {/* Fill */}
+                <div
                   className={`h-full rounded-full transition-all duration-500 ${
-                    utilizationPercent > 50 
-                      ? 'bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500' 
-                      : utilizationPercent > 30 
-                        ? 'bg-gradient-to-r from-emerald-500 to-amber-400' 
+                    utilizationPercent > 50
+                      ? 'bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500'
+                      : utilizationPercent > 30
+                        ? 'bg-gradient-to-r from-emerald-500 to-amber-400'
                         : 'bg-gradient-to-r from-emerald-600 to-emerald-400'
                   }`}
                   style={{ width: `${Math.min(100, Math.max(2, utilizationPercent))}%` }}
                 />
               </div>
 
-              {/* Threshold Labels */}
-              <div className="flex items-center justify-between text-[10px] text-slate-500 font-medium px-0.5">
-                <span>0% Utilized</span>
-                <span className="text-amber-400 font-bold flex items-center gap-1">
-                  ▲ 30% Recommended Cap ({formatCurrency(safeSpend30, false)})
+              {/* Labels — 0% edge, 30% absolutely aligned to marker, 100% edge */}
+              <div className="relative flex items-start justify-between text-[10px] font-medium text-slate-500 px-0.5 min-h-[1.25rem]">
+                <span className="shrink-0">0%</span>
+                {/* This label is absolutely positioned at 30% to perfectly match the bar marker */}
+                <span
+                  className="absolute -translate-x-1/2 text-amber-400 font-bold whitespace-nowrap flex items-center gap-0.5 leading-tight text-center"
+                  style={{ left: '30%' }}
+                >
+                  ▲ 30% cap
+                  <span className={`hidden sm:inline ${style('text-slate-500', 'text-slate-400')}`}>
+                    &nbsp;({formatCurrency(safeSpend30, false)})
+                  </span>
                 </span>
-                <span>100% Limit ({formatCurrency(creditLimit, false)})</span>
+                <span className="shrink-0 whitespace-nowrap">{formatCurrency(creditLimit, false)}</span>
               </div>
             </div>
           </div>

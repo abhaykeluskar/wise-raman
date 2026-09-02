@@ -212,3 +212,69 @@ export const matchesPaymentRail = (tx, accounts, rail) => {
   return true;
 };
 
+export const getFinancialContext = (transactions = []) => {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  
+  let income = 0;
+  let spending = 0;
+  let lastImportDate = null;
+
+  transactions.forEach(t => {
+    if (!t.date) return;
+    const d = new Date(t.date);
+    
+    // Track most recent transaction for data freshness
+    if (!lastImportDate || d > lastImportDate) {
+      lastImportDate = d;
+    }
+
+    // Only process current month for financial context
+    if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+      const amt = parseFloat(t.amount || 0);
+      
+      // Determine if it's an internal transfer/settlement
+      const isTransfer = isInternalFlow(t);
+      const isExcluded = t.is_excluded_from_spending === true;
+
+      // Income = positive events, non-transfers, non-excluded
+      if (amt > 0 && !isTransfer && !isExcluded) {
+        income += amt;
+      }
+      
+      // Spending = negative events, non-transfers, non-excluded
+      if (amt < 0 && !isTransfer && !isExcluded) {
+        spending += Math.abs(amt);
+      }
+    }
+  });
+
+  const netFlow = income - spending;
+  const savingsRate = income > 0 ? (netFlow / income) * 100 : 0;
+
+  // Determine freshness
+  let freshnessStatus = "Unknown";
+  let isComplete = false;
+  if (lastImportDate) {
+    const daysSinceUpdate = Math.round((now - lastImportDate) / (1000 * 60 * 60 * 24));
+    if (daysSinceUpdate <= 1) {
+      freshnessStatus = "Updated today";
+      isComplete = true;
+    } else {
+      freshnessStatus = `Last import ${daysSinceUpdate} days ago`;
+    }
+  }
+
+  return {
+    period: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    transactionCount: transactions.length, // total history available for RAG
+    income,
+    spending,
+    netFlow,
+    savingsRate,
+    lastUpdatedAt: lastImportDate ? lastImportDate.toISOString() : null,
+    freshnessStatus,
+    dataCompleteness: isComplete ? "HIGH" : "PARTIAL"
+  };
+};

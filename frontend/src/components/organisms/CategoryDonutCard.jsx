@@ -146,7 +146,7 @@ export const CategoryDonutCard = () => {
                   key={d.name} 
                   className={`flex items-center justify-between p-1.5 px-2.5 rounded-lg border-0 ${style('hover:bg-slate-800/30', 'hover:bg-slate-100/50')} transition-colors`}
                 >
-                  <div className="flex items-center gap-2 text-xs font-medium truncate max-w-[120px]">
+                  <div className="flex items-center gap-2 text-xs font-medium min-w-0">
                     <span 
                       className="h-2 w-2 rounded-full flex-shrink-0" 
                       style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} 

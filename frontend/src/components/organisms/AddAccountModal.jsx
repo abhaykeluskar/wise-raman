@@ -8,7 +8,7 @@ import { Landmark, X, PlusCircle, CheckCircle2 } from 'lucide-react';
 
 export const AddAccountModal = ({ isOpen, onClose }) => {
   const { style } = useTheme();
-  const { banks, fetchData } = useFinance();
+  const { banks, fetchData , authFetch} = useFinance();
 
   const [name, setName] = useState('');
   const [bankId, setBankId] = useState(banks[0]?.id || '');
@@ -48,7 +48,7 @@ export const AddAccountModal = ({ isOpen, onClose }) => {
     setError('');
 
     try {
-      const res = await fetch('/api/accounts', {
+      const res = await authFetch('/api/accounts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
