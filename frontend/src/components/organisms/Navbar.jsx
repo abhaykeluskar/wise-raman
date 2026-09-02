@@ -265,7 +265,7 @@ export const Navbar = ({ activeTab, onSelectTab, onOpenUploadModal }) => {
         className={`md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-slate-800/10 pb-safe ${style('bg-[#181828]/95 backdrop-blur-md', 'bg-[#E0E5EC]/95 backdrop-blur-md')}`}
         aria-label="Primary"
       >
-        <div className="grid grid-cols-5 px-1 pt-1">
+        <div className="grid grid-cols-6 px-1 pt-1">
           {mobileNavItems.map(item => {
             const Icon = item.icon;
             const isActive = activeTab === item.key;

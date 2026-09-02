@@ -32,10 +32,22 @@ def extract_pdf_pages_text(file_bytes: bytes, password: Optional[str] = None) ->
     Extracts text from each PDF page. Supports password-protected PDFs.
     If a page has no selectable font glyphs (vector curves/scanned),
     falls back to rendering and OCR via Tesseract.
+    
+    Enforces Phase D Sandboxing Limits:
+    - Max Size: 10MB
+    - Max Pages: 50
+    - OCR Timeout: 30s per page
     """
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise ValueError("PDF file exceeds 10MB sandboxing limit.")
+        
     pages_text = []
     try:
         with pdfplumber.open(io.BytesIO(file_bytes), password=password) as pdf:
+            if len(pdf.pages) > 50:
+                raise ValueError(f"PDF exceeds 50-page sandboxing limit (found {len(pdf.pages)}).")
+                
             for idx, page in enumerate(pdf.pages):
                 t = page.extract_text() or ""
                 if len(t.strip()) < 15:
@@ -51,14 +63,22 @@ def extract_pdf_pages_text(file_bytes: bytes, password: Optional[str] = None) ->
                         gray = img.convert('L')
                         enhanced = ImageEnhance.Contrast(gray).enhance(2.0)
                         
-                        ocr_t = pytesseract.image_to_string(enhanced)
+                        ocr_t = pytesseract.image_to_string(enhanced, timeout=30) # Enforce OCR 30s timeout
                         logger.info(f"OCR successfully extracted {len(ocr_t)} characters from page {idx+1}")
                         pages_text.append(ocr_t)
+                    except pytesseract.TesseractError as e:
+                        logger.error(f"OCR fallback failed on page {idx+1}: {e}")
+                        pages_text.append(t)
+                    except RuntimeError as e: # Timeout error is a RuntimeError from pytesseract
+                        logger.error(f"OCR fallback timed out after 30s on page {idx+1}: {e}")
+                        pages_text.append(t)
                     except Exception as ocr_err:
                         logger.error(f"OCR fallback failed on page {idx+1}: {ocr_err}")
                         pages_text.append(t)
                 else:
                     pages_text.append(t)
+    except ValueError:
+        raise
     except pdfplumber.pdfminer.pdfdocument.PDFPasswordIncorrect:
         raise ValueError("PDF is password-protected. Please provide the correct password.")
     except Exception as e:

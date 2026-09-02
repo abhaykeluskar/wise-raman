@@ -13,6 +13,7 @@ import {
   Trash2, 
   Check, 
   X, 
+  Lock,
   Sparkles, 
   TrendingDown, 
   CheckCircle2, 
@@ -479,12 +480,14 @@ export const TransactionLedgerView = () => {
                   if (isEditing) {
                     return (
                       <tr key={tx.id} className={style('bg-slate-800/50', 'bg-slate-100')}>
-                        <td className="py-2.5 px-3">
+                        <td className="py-2.5 px-3 flex items-center gap-1 text-slate-400">
+                          <Lock className="h-3 w-3 text-slate-500" title="Immutable Financial Truth" />
                           <input
                             type="date"
                             value={editDate}
-                            onChange={e => setEditDate(e.target.value)}
-                            className="rounded-lg px-2 py-1 text-xs border-0 bg-slate-900 text-white"
+                            readOnly
+                            disabled
+                            className="rounded-lg px-2 py-1 text-xs border-0 bg-slate-900/50 text-slate-400 cursor-not-allowed"
                           />
                         </td>
                         <td className="py-2.5 px-3">
@@ -509,13 +512,15 @@ export const TransactionLedgerView = () => {
                             ))}
                           </select>
                         </td>
-                        <td className="py-2.5 px-3">
+                        <td className="py-2.5 px-3 flex items-center gap-1 justify-end text-slate-400">
+                          <Lock className="h-3 w-3 text-slate-500" title="Immutable Financial Truth" />
                           <input
                             type="number"
                             step="0.01"
                             value={editAmount}
-                            onChange={e => setEditAmount(e.target.value)}
-                            className="w-24 rounded-lg px-2 py-1 text-xs border-0 bg-slate-900 text-white text-right"
+                            readOnly
+                            disabled
+                            className="w-24 rounded-lg px-2 py-1 text-xs border-0 bg-slate-900/50 text-slate-400 text-right cursor-not-allowed"
                           />
                         </td>
                         <td className="py-2.5 px-3 text-center" colSpan={2}>

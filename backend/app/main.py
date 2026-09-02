@@ -513,7 +513,6 @@ def upload_bank_statement(
             if opening_balance is not None and closing_balance is not None:
                 sum_transactions = sum(Decimal(str(t['amount'])) for t in parsed_txs)
                 
-                from app.models import AccountSubtype
                 if account.subtype == AccountSubtype.CREDIT_CARD:
                     # For CC: Total Due = Opening Dues + Debits - Credits
                     # sum_transactions is (Credits - Debits), so Opening - sum_transactions
@@ -646,7 +645,7 @@ def upload_bank_statement(
             date=pt["date"],
             amount=pt["amount"],
             description=clean_desc,
-            raw_text=pt["raw_text"],
+            raw_narration=pt["raw_text"],
             category=pt.get("category") or "Processing...",
             subcategory=pt.get("subcategory") or "Parsing...",
             reference_id=pt.get("reference_id"),
@@ -2332,7 +2331,7 @@ def get_financial_health_score_api(db: Session = Depends(get_db), current_user =
     Returns 0-100 explainable Financial Health Score with confidence and benchmark curves.
     """
     from app.services.health_score import calculate_financial_health_score
-    from app.models import Account, Loan, CreditCard
+    from app.models import Account, AccountSubtype, Loan, CreditCard
 
     accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
     cards = db.query(CreditCard).filter(CreditCard.user_id == current_user.id).all()
@@ -2341,7 +2340,7 @@ def get_financial_health_score_api(db: Session = Depends(get_db), current_user =
 
     # Calculate metrics
     liquid_reserves = sum(float(a.balance or 0) for a in accounts if a.subtype in [AccountSubtype.SAVINGS, AccountSubtype.CURRENT])
-    total_credit_limit = sum(float(c.credit_limit or 0) for c in cards)
+    total_credit_limit = sum(float(c.monthly_cap or (c.account.credit_limit if c.account else 0) or 0) for c in cards)
     current_credit_spend = sum(float(c.account.balance or 0) for c in cards if c.account)
     monthly_emi = sum(float(l.emi_amount or 0) for l in loans)
 
@@ -2400,7 +2399,7 @@ def get_financial_calendar_api(db: Session = Depends(get_db), current_user = Dep
     Returns monthly financial obligations schedule and projected month-end balance.
     """
     from app.services.financial_calendar import build_financial_calendar
-    from app.models import Account, CreditCard, Loan
+    from app.models import Account, AccountSubtype, CreditCard, Loan
 
     accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
     liquid_balance = sum(float(a.balance or 0) for a in accounts if a.subtype in [AccountSubtype.SAVINGS, AccountSubtype.CURRENT])

@@ -32,3 +32,15 @@ def init_db():
         
     # Create all tables safely if they do not already exist (preserving existing data)
     Base.metadata.create_all(bind=engine)
+    
+    # Initialize versioning tracking
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("""
+                INSERT INTO system_metadata (key, value) VALUES ('schema_version', '1.0') ON CONFLICT (key) DO NOTHING;
+                INSERT INTO system_metadata (key, value) VALUES ('domain_version', '1.0') ON CONFLICT (key) DO NOTHING;
+                INSERT INTO system_metadata (key, value) VALUES ('backup_format_version', '1.0') ON CONFLICT (key) DO NOTHING;
+            """))
+            conn.commit()
+        except Exception:
+            pass

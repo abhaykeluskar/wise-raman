@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Dict, Any
 
-from app.ai_copilot.query_planner import FinancialQueryPlanner
+from app.ai_copilot.query_planner import FinancialQueryPlanner, EvidencePackage
 from app.ai_copilot.redaction import PrivacyRedactor
 
 logger = logging.getLogger(__name__)
@@ -20,37 +20,47 @@ class FinancialCopilotAgent:
     def process_query(self, user_id: str, query: str) -> Dict[str, Any]:
         """
         1. Parse intent
-        2. Execute query deterministically
+        2. Execute query deterministically -> Evidence Package
         3. Redact PII from evidence
-        4. Generate response using LLM
+        4. Generate response using LLM to explain the Evidence Package
         """
         # Step 1
         plan = self.planner.parse_intent(query)
         
         # Step 2
-        evidence_payload = self.planner.execute_plan(self.db_session, user_id, plan)
+        evidence_package: EvidencePackage = self.planner.execute_plan(self.db_session, user_id, query, plan)
+        evidence_dict = evidence_package.dict()
         
         # Step 3
-        safe_evidence_str = self.redactor.redact_text(json.dumps(evidence_payload))
+        safe_evidence_str = self.redactor.redact_text(json.dumps(evidence_dict))
         
         # Step 4: LLM Generation
         # Prompt engineered to be concise for small models.
         prompt = f"""
-        User Query: {query}
+        User Question: {query}
         
-        Verified Financial Evidence:
+        Immutable Evidence Package:
         {safe_evidence_str}
         
-        Answer the user's query based ONLY on the evidence provided.
-        Be concise. Do not invent numbers.
+        INSTRUCTIONS:
+        1. Explain the pre-computed calculation in the Evidence Package to the user.
+        2. DO NOT perform any math yourself. The 'result' field is the absolute truth.
+        3. If there is no evidence, politely state that you cannot answer the financial question.
+        4. Keep your answer under 3 sentences.
         """
         
         # simulated LLM response
-        llm_response = f"Based on the evidence, your total spending for {plan['filters'].get('category', 'this category')} was ₹{evidence_payload['evidence']['total_amount']} across {evidence_payload['evidence']['transaction_count']} transactions."
+        result_amt = evidence_dict["calculation"]["result"]
+        txn_count = len(evidence_dict["evidence"])
         
+        if txn_count > 0:
+            llm_response = f"Based on the evidence, your total spending was ₹{result_amt:.2f} across {txn_count} transactions."
+        else:
+            llm_response = "I couldn't find any verified transactions matching your request."
+            
         return {
             "response": llm_response,
-            "evidence": evidence_payload,
+            "evidence": evidence_dict,
             "plan": plan
         }
         

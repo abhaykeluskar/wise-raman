@@ -85,12 +85,9 @@ export const CreditCardSummaryCard = ({ onSelectCard }) => {
                   </div>
                 </div>
 
-                <div className="flex flex-col items-end shrink-0 whitespace-nowrap pl-2">
-                  <span className="text-xs font-bold text-red-400 tabular-nums">
+                <div className="flex flex-col items-end justify-center shrink-0 whitespace-nowrap pl-2">
+                  <span className="text-sm font-black text-red-400 tabular-nums">
                     {formatCurrency(c.totalPayment)}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                    Total Due
                   </span>
                 </div>
               </div>

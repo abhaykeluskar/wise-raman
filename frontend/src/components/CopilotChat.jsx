@@ -48,11 +48,22 @@ const CopilotChat = () => {
             }}>
               {msg.content}
             </div>
-            {msg.evidence && (
-              <details style={{ marginTop: '5px', fontSize: '0.8rem', color: '#666' }}>
-                <summary>View Evidence</summary>
-                <pre>{JSON.stringify(msg.evidence, null, 2)}</pre>
-              </details>
+            {msg.evidence && msg.evidence.evidence && (
+              <div style={{ marginTop: '5px', fontSize: '0.8rem', padding: '8px', backgroundColor: '#e9ecef', borderRadius: '4px' }}>
+                <strong style={{ color: '#d9534f' }}>Strict Evidence Applied</strong>
+                <br/>
+                <em>Calculation: {msg.evidence.calculation?.operation} on {msg.evidence.calculation?.field} = ₹{msg.evidence.calculation?.result}</em>
+                <br/>
+                <div style={{ marginTop: '4px' }}>
+                  {msg.evidence.evidence.map((evt, idx) => (
+                    <span key={idx} style={{ display: 'inline-block', marginRight: '8px' }}>
+                      <a href={`/evidence/${evt.source_document}#page=${evt.source_page || 1}`} target="_blank" rel="noopener noreferrer" style={{ color: '#0056b3' }}>
+                        📄 {evt.source_document || 'Bank Statement'} (₹{evt.amount})
+                      </a>
+                    </span>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         ))}

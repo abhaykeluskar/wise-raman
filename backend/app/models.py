@@ -1,7 +1,7 @@
 import uuid
 import enum
 from sqlalchemy import Column, String, Date, Boolean, ForeignKey, Numeric, Text, Enum as SQLEnum, DateTime, Integer
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, synonym
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import UUID
@@ -41,6 +41,17 @@ class TransactionType(str, enum.Enum):
     CC_PAYMENT_RECEIVED = "CC_PAYMENT_RECEIVED"
     REFUND_REVERSAL = "REFUND_REVERSAL"
     BANK_FEE_INTEREST = "BANK_FEE_INTEREST"
+    UNKNOWN_NEEDS_REVIEW = "UNKNOWN_NEEDS_REVIEW"
+
+class PaymentRail(str, enum.Enum):
+    UPI = "UPI"
+    NEFT = "NEFT"
+    IMPS = "IMPS"
+    RTGS = "RTGS"
+    NACH = "NACH"
+    BBPS = "BBPS"
+    CARD = "CARD"
+    UNKNOWN_NEEDS_REVIEW = "UNKNOWN_NEEDS_REVIEW"
 
 class Bank(Base):
     __tablename__ = "banks"
@@ -101,7 +112,29 @@ class UPITransactionType(str, enum.Enum):
     SELF_TRANSFER = "SELF_TRANSFER"
     COLLECT = "COLLECT"
     AUTOPAY = "AUTOPAY"
+    UNKNOWN_NEEDS_REVIEW = "UNKNOWN_NEEDS_REVIEW"
+
+class FinancialEventType(str, enum.Enum):
+    EXPENSE = "EXPENSE"
+    INCOME = "INCOME"
+    TRANSFER = "TRANSFER"
+    CARD_PAYMENT = "CARD_PAYMENT"
+    PURCHASE = "PURCHASE"
+    REFUND = "REFUND"
+    FEE = "FEE"
+    INTEREST = "INTEREST"
+    TAX = "TAX"
+    INVESTMENT = "INVESTMENT"
+    LOAN_DISBURSEMENT = "LOAN_DISBURSEMENT"
+    LOAN_REPAYMENT = "LOAN_REPAYMENT"
+    UNKNOWN_NEEDS_REVIEW = "UNKNOWN_NEEDS_REVIEW"
+
+class ReviewState(str, enum.Enum):
     UNKNOWN = "UNKNOWN"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+    USER_CONFIRMED = "USER_CONFIRMED"
+    VERIFIED = "VERIFIED"
+    AUTO_RESOLVED = "AUTO_RESOLVED"
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -112,11 +145,16 @@ class Transaction(Base):
     statement_id = Column(UUID(as_uuid=True), ForeignKey("credit_card_statements.id", ondelete="SET NULL"), nullable=True)
     date = Column(Date, nullable=False)  # transaction_date
     value_date = Column(Date, nullable=True)
-    raw_text = Column(Text, nullable=False)  # raw_narration
+    raw_narration = Column("raw_narration", Text, nullable=False)  # Immutable original text
+    raw_text = synonym("raw_narration")
+    normalized_narration = Column(String(150), nullable=True)
     description = Column(String(150), nullable=True)  # cleaned_merchant
-    category = Column(String(100), nullable=True)
+    merchant_id = Column(UUID(as_uuid=True), ForeignKey("merchants.id", ondelete="SET NULL"), nullable=True)
+    category = Column(String(100), nullable=True, default="UNKNOWN")
     subcategory = Column(String(100), nullable=True)
-    transaction_type = Column(SQLEnum(TransactionType, name="transaction_type_enum"), nullable=False, default=TransactionType.EXPENSE)
+    transaction_type = Column(SQLEnum(TransactionType, name="transaction_type_enum"), nullable=False, default=TransactionType.UNKNOWN_NEEDS_REVIEW)
+    payment_rail = Column(SQLEnum(PaymentRail, name="payment_rail_enum"), nullable=False, default=PaymentRail.UNKNOWN_NEEDS_REVIEW)
+    review_state = Column(SQLEnum(ReviewState, name="review_state_enum"), nullable=False, default=ReviewState.UNKNOWN)
     amount = Column(Numeric(14, 2), nullable=False)  # (+) Cash in, (-) Cash out
     running_balance = Column(Numeric(14, 2), nullable=True)
     reference_id = Column(String(100), nullable=True)
@@ -127,19 +165,28 @@ class Transaction(Base):
     upi_vpa = Column(String(150), nullable=True)
     utr_number = Column(String(50), nullable=True, index=True)
     
-    # Document Provenance Fields
+    # Document Provenance & Data Quality Fields
     source_document_id = Column(UUID(as_uuid=True), nullable=True)
+    source_type = Column(String(50), nullable=False, default="UNKNOWN") # "PDF_STATEMENT", "CSV", "USER", etc.
+    source_id = Column(String(255), nullable=True)
     source_page_number = Column(Integer, nullable=True)
     source_coordinates = Column(String(100), nullable=True) # "x,y,w,h"
+    extraction_method = Column(String(50), nullable=True)
     extraction_confidence = Column(Numeric(4, 3), default=1.000)
+    confidence = Column(Numeric(4, 3), nullable=True)
+    verified = Column(Boolean, default=False)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    verified_by = Column(String(100), nullable=True)
 
     is_excluded_from_spending = Column(Boolean, default=False)
-    verified = Column(Boolean, default=False)
     embedding = Column(Vector(768), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    financial_event_id = Column(UUID(as_uuid=True), ForeignKey("financial_events.id", ondelete="SET NULL"), nullable=True)
+
     account = relationship("Account", back_populates="transactions")
     statement = relationship("CreditCardStatement", back_populates="transactions")
+    financial_event = relationship("FinancialEvent", back_populates="transactions")
 
 class Category(Base):
     __tablename__ = "categories"
@@ -306,19 +353,7 @@ class TaxRecord(Base):
 
 # --- PHASE 4: AI Financial Copilot ---
 
-class FinancialEvent(Base):
-    """
-    Semantic financial memory for the AI.
-    """
-    __tablename__ = "financial_events"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    event_type = Column(String(50), nullable=False) # 'SALARY_INCREASE', 'LARGE_PURCHASE', 'LOAN_CLOSED'
-    event_date = Column(Date, nullable=False)
-    description = Column(Text, nullable=False)
-    amount_impact = Column(Numeric(14, 2), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class AIChatSession(Base):
     """
@@ -629,5 +664,55 @@ class BankFeeRecord(Base):
     raw_narration = Column(Text, nullable=False)
     is_avoidable = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+
+class FinancialEvent(Base):
+    __tablename__ = "financial_events"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    event_type = Column(SQLEnum(FinancialEventType, name="financial_event_type_enum"), nullable=False, default=FinancialEventType.UNKNOWN_NEEDS_REVIEW)
+    review_state = Column(SQLEnum(ReviewState, name="review_state_enum"), nullable=False, default=ReviewState.UNKNOWN)
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    parent_event_id = Column(UUID(as_uuid=True), ForeignKey("financial_events.id", ondelete="SET NULL"), nullable=True)
+    economic_amount = Column(Numeric(14, 2), nullable=True) # Explicit semantic amount
+    
+    # Data Quality & Provenance Fields
+    source_type = Column(String(50), nullable=False, default="UNKNOWN")
+    source_id = Column(String(255), nullable=True)
+    extraction_method = Column(String(50), nullable=True)
+    confidence = Column(Numeric(4, 3), nullable=True)
+    verified = Column(Boolean, default=False)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    verified_by = Column(String(100), nullable=True)
+    
+    transactions = relationship("Transaction", back_populates="financial_event")
+    parent_event = relationship("FinancialEvent", remote_side=[id])
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    actor = Column(String(100), nullable=False) # "USER", "SYSTEM", "AI", "PARSER"
+    entity_type = Column(String(50), nullable=False) # "TRANSACTION", "FINANCIAL_EVENT", "ACCOUNT"
+    entity_id = Column(UUID(as_uuid=True), nullable=False)
+    action = Column(String(50), nullable=False) # "CREATE", "UPDATE", "DELETE", "STATE_CHANGE"
+    old_value = Column(Text, nullable=True) # JSON string
+    new_value = Column(Text, nullable=True) # JSON string
+    source = Column(String(150), nullable=True)
+    reason = Column(String(255), nullable=True)
+
+class SystemMetadata(Base):
+    """
+    Migration & Versioning Infrastructure tracking.
+    """
+    __tablename__ = "system_metadata"
+    
+    key = Column(String(50), primary_key=True)
+    value = Column(String(255), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 

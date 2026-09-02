@@ -146,14 +146,26 @@ def test_restore_backup(wbr_bytes: bytes, passphrase: str) -> Dict[str, Any]:
         decrypted_payload_bytes = aesgcm_dek.decrypt(payload_nonce, encrypted_payload, b"wiseraman-payload-v1")
         data_payload = json.loads(decrypted_payload_bytes.decode('utf-8'))
 
+        # 5. Semantic & Cryptographic Checks
+        issues = []
+        if not isinstance(data_payload, dict):
+            issues.append("Payload is not a valid JSON dictionary.")
+        if "accounts" not in data_payload:
+            issues.append("Missing 'accounts' semantic block.")
+        if "transactions" not in data_payload:
+            issues.append("Missing 'transactions' semantic block.")
+            
+        semantic_verified = len(issues) == 0
+
         return {
             "is_valid": True,
-            "verified": True,
+            "verified": semantic_verified,
+            "semantic_issues": issues,
             "version": manifest.get("version"),
             "created_at": manifest.get("created_at"),
             "user_email": manifest.get("user_email"),
             "record_counts": manifest.get("record_counts", {}),
-            "payload_data": data_payload
+            "payload_data": data_payload if semantic_verified else None
         }
     except Exception as e:
         return {
