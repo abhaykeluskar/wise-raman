@@ -64,7 +64,7 @@ export const TopBar = ({
   };
 
   return (
-    <header className={`sticky top-0 z-30 h-14 border-b flex items-center justify-between px-4 sm:px-6 transition-colors duration-150 ${
+    <header className={`shrink-0 sticky top-0 z-30 h-14 border-b flex items-center justify-between px-4 sm:px-6 transition-colors duration-150 ${
       isDark ? 'bg-[#171E19]/90 backdrop-blur-md border-[#2A352D]' : 'bg-[#FFFFFF]/90 backdrop-blur-md border-[#E4E8E3]'
     }`}>
       {/* Left: Breadcrumbs / Title */}

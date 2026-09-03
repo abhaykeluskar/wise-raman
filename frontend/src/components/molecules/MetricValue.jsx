@@ -18,12 +18,12 @@ export const MetricValue = ({
   const getSizeClasses = () => {
     switch (size) {
       case 'lg':
-        return 'text-[32px] sm:text-[40px] font-[650] tracking-[-0.025em] leading-[1.1]';
+        return 'text-[28px] sm:text-[34px] lg:text-[40px] font-[650] tracking-[-0.025em] leading-[1.1]';
       case 'sm':
-        return 'text-[20px] sm:text-[24px] font-[650] tracking-[-0.02em] leading-tight';
+        return 'text-[18px] sm:text-[22px] font-[650] tracking-[-0.02em] leading-tight';
       case 'md':
       default:
-        return 'text-[26px] sm:text-[32px] font-[650] tracking-[-0.025em] leading-tight';
+        return 'text-[22px] sm:text-[26px] lg:text-[28px] xl:text-[32px] font-[650] tracking-[-0.025em] leading-tight';
     }
   };
 
@@ -39,7 +39,7 @@ export const MetricValue = ({
         </span>
       )}
 
-      <div className={`tabular-nums font-sans ${getSizeClasses()} ${
+      <div className={`tabular-nums font-sans whitespace-nowrap ${getSizeClasses()} ${
         isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'
       }`}>
         {value}

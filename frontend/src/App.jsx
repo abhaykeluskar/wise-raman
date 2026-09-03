@@ -96,7 +96,7 @@ const MainLayout = () => {
   }
 
   return (
-    <div className={`min-h-screen flex font-sans ${
+    <div className={`h-screen flex font-sans overflow-hidden ${
       theme === 'dark' ? 'bg-[#111713] text-[#F1F5F2]' : 'bg-[#F7F8F5] text-[#1D2822]'
     }`}>
       {/* 1. Desktop Persistent Sidebar */}
@@ -107,7 +107,7 @@ const MainLayout = () => {
       />
 
       {/* 2. Main Workspace Viewport */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <TopBar
           activeTab={activeTab}
           onOpenUploadModal={() => setShowUploadModal(true)}
@@ -116,12 +116,13 @@ const MainLayout = () => {
           onPeriodChange={(p) => setSelectedPeriod(p)}
         />
 
-        <main className="flex-1 w-full max-w-[1440px] mx-auto p-4 sm:p-6 lg:p-8 pb-24 md:pb-12">
-          {loading && isInitialLoad && (
-            <div className="mb-4 text-xs text-[#8B978F] font-medium tracking-wide">
-              Loading financial accounts and statement ledger…
-            </div>
-          )}
+        <div className="flex-1 overflow-y-auto">
+          <main className="w-full max-w-[1440px] mx-auto p-4 sm:p-6 lg:p-8 pb-24 md:pb-12">
+            {loading && isInitialLoad && (
+              <div className="mb-4 text-xs text-[#8B978F] font-medium tracking-wide">
+                Loading financial accounts and statement ledger…
+              </div>
+            )}
 
           {/* Page 01: Dashboard */}
           {activeTab === 'dashboard' && (
@@ -232,6 +233,7 @@ const MainLayout = () => {
             <TruthInspectorView />
           )}
         </main>
+        </div>
       </div>
 
       {/* 3. Mobile 5-Tab Bottom Navigation */}

@@ -124,8 +124,8 @@ export const CashFlowView = () => {
       <div className={`p-6 rounded-[16px] border ${
         isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
       }`}>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 sm:divide-x sm:divide-[#E4E8E3]/20">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:divide-x lg:divide-[#E4E8E3]/20">
+          <div className="lg:pr-4">
             <MetricValue
               label="Latest Monthly Inflows"
               value={`+${formatCurrency(currentMonth.income)}`}
@@ -134,7 +134,7 @@ export const CashFlowView = () => {
             />
           </div>
 
-          <div className="sm:px-6">
+          <div className="lg:px-4">
             <MetricValue
               label="Latest Monthly Outflows"
               value={`-${formatCurrency(currentMonth.expenses)}`}
@@ -143,7 +143,7 @@ export const CashFlowView = () => {
             />
           </div>
 
-          <div className="sm:px-6">
+          <div className="lg:px-4">
             <MetricValue
               label="Net Surplus"
               value={formatCurrency(currentMonth.net)}
@@ -152,7 +152,7 @@ export const CashFlowView = () => {
             />
           </div>
 
-          <div className="sm:pl-6">
+          <div className="lg:pl-4">
             <MetricValue
               label="Projected End Balance"
               value="₹1,62,136.45"

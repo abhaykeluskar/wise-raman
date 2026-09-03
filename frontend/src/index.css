@@ -108,10 +108,11 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
-  overflow-y: auto;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100%;
+}
+
+#root {
+  height: 100%;
 }
 
 /* Custom Minimalist Scrollbars */
