@@ -1,642 +1,508 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
-import { useToast } from '../../context/ToastContext';
-import { Button } from '../atoms/Button';
+import { useDialog } from '../../context/ToastContext';
 import { Badge } from '../atoms/Badge';
-import { NetworkLogo } from '../atoms/NetworkLogo';
-import { EditCardModal } from '../organisms/EditCardModal';
-import { AddAccountModal } from '../organisms/AddAccountModal';
-import { AddCardModal } from '../organisms/AddCardModal';
-import { EditCategoryModal } from '../organisms/EditCategoryModal';
-import { TelemetryTerminal } from '../organisms/TelemetryTerminal';
-import { formatCurrency } from '../../utils/formatters';
+import { Button } from '../atoms/Button';
+import { Input } from '../atoms/Input';
 import { 
   Settings as SettingsIcon, 
+  ShieldCheck, 
+  Lock, 
+  Cpu, 
   Moon, 
   Sun, 
-  Landmark, 
   Plus, 
   Trash2, 
-  Pencil, 
-  AlertTriangle, 
-  CreditCard,
-  PlusCircle,
-  Tag
+  Tag, 
+  Database,
+  CheckCircle2,
+  AlertTriangle,
+  AlertOctagon
 } from 'lucide-react';
 
 export const SettingsView = () => {
-  const { theme, setTheme, style } = useTheme();
-  const { 
-    cards, 
-    rules, 
-    categories, 
-    accounts, 
-    transactions,
-    addRule, 
-    deleteRule, 
-    fetchData,
-    setTransactions 
-  , authFetch} = useFinance();
+  const { theme, setTheme } = useTheme();
+  const { rules, categories, addRule, deleteRule, user, authFetch, fetchData, transactions, accounts, cards } = useFinance();
+  const { confirm, alert, toast } = useDialog();
+  const isDark = theme === 'dark';
 
-  // Modals state
-  const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
-  const [isAddCardOpen, setIsAddCardOpen] = useState(false);
-  const [cardToEdit, setCardToEdit] = useState(null);
-  const [categoryToEdit, setCategoryToEdit] = useState(null);
-  const [isPurging, setIsPurging] = useState(false);
-  const { toast, confirm } = useToast();
-
-  // Categories Local States
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [categoryLoading, setCategoryLoading] = useState(false);
-  const [categoryError, setCategoryError] = useState('');
-
-  // Form states for rule engine
   const [ruleKeyword, setRuleKeyword] = useState('');
-  const [ruleCategory, setRuleCategory] = useState(categories[0]?.name || 'Dining');
+  const [ruleCategory, setRuleCategory] = useState(categories[0]?.name || 'Food & Dining');
 
-  useEffect(() => {
-    if (categories.length > 0 && !categories.find(c => c.name === ruleCategory)) {
-      setRuleCategory(categories[0]?.name);
-    }
-  }, [categories, ruleCategory]);
+  // Category management
+  const [newCatName, setNewCatName] = useState('');
+  const [catLoading, setCatLoading] = useState(false);
 
-  const accountsByBank = useMemo(() => {
-    const groups = [];
-    const index = new Map();
-    for (const acc of accounts) {
-      const key = acc.bank?.name || 'Other';
-      if (!index.has(key)) {
-        index.set(key, groups.length);
-        groups.push({ bank: key, items: [] });
-      }
-      groups[index.get(key)].items.push(acc);
-    }
-    return groups;
-  }, [accounts]);
+  // Selective Purge state
+  const [isPurging, setIsPurging] = useState(false);
+  const [purgeSelections, setPurgeSelections] = useState({
+    transactions: true,
+    payslips: false,
+    bank: false,
+    card: false,
+    account: false
+  });
 
-  // Handle Add Category
-  const handleAddCategory = async (e) => {
+  const allSelected = Object.values(purgeSelections).every(Boolean);
+  const someSelected = Object.values(purgeSelections).some(Boolean);
+
+  const toggleAll = () => {
+    const nextState = !allSelected;
+    setPurgeSelections({
+      transactions: nextState,
+      payslips: nextState,
+      bank: nextState,
+      card: nextState,
+      account: nextState
+    });
+  };
+
+  const toggleSelection = (key) => {
+    setPurgeSelections(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const handleAddRule = async (e) => {
     e.preventDefault();
-    if (!newCategoryName.trim()) return;
+    if (!ruleKeyword.trim()) return;
+    await addRule(ruleKeyword.trim(), ruleCategory);
+    setRuleKeyword('');
+  };
 
-    setCategoryLoading(true);
-    setCategoryError('');
-
+  const handleCreateCategory = async (e) => {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+    setCatLoading(true);
     try {
       const res = await authFetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newCategoryName.trim() })
+        body: JSON.stringify({ name: newCatName.trim(), description: 'User created' })
       });
-
       if (res.ok) {
-        toast.success(`Category '${newCategoryName.trim()}' added.`);
-        setNewCategoryName('');
+        setNewCatName('');
         await fetchData();
-      } else {
-        const data = await res.json();
-        setCategoryError(data.detail || 'Failed to create category.');
-        toast.error(data.detail || 'Failed to create category.', 'Category Error');
+        toast.success(`Category "${newCatName.trim()}" created.`);
       }
     } catch (err) {
-      setCategoryError('Network error while creating category.');
-      toast.error('Network error while creating category.', 'Connection Error');
+      console.error('Failed to create category:', err);
     } finally {
-      setCategoryLoading(false);
+      setCatLoading(false);
     }
   };
 
-  // Handle Delete Category
-  const handleDeleteCategory = async (cat) => {
-    if (cat.name.toLowerCase() === 'others') {
-      toast.warning("The default 'Others' category cannot be deleted.", 'Protected Category');
-      return;
-    }
-
-    const isConfirmed = await confirm({
+  const handleDeleteCategory = async (catName) => {
+    const confirmed = await confirm({
       title: 'Delete Category',
-      message: `Are you sure you want to delete '${cat.name}'? Existing transactions will be reassigned to 'Others'.`,
+      message: `Are you sure you want to delete "${catName}"? Existing transactions will retain their historical classification.`,
       confirmText: 'Delete Category',
       isDanger: true
     });
-
-    if (!isConfirmed) return;
+    if (!confirmed) return;
 
     try {
-      const res = await authFetch(`/api/categories/${cat.id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/categories/${encodeURIComponent(catName)}`, {
+        method: 'DELETE'
+      });
       if (res.ok) {
-        toast.success(`Category '${cat.name}' deleted.`);
         await fetchData();
-      } else {
-        const data = await res.json();
-        toast.error(data.detail || 'Failed to delete category.', 'Delete Error');
+        toast.success(`Category "${catName}" deleted.`);
       }
     } catch (err) {
-      console.error("Error deleting category:", err);
-      toast.error('Failed to delete category due to network error.', 'Error');
+      console.error('Failed to delete category:', err);
     }
   };
 
-  const handleCreateRule = (e) => {
-    e.preventDefault();
-    if (!ruleKeyword.trim()) return;
-    addRule(ruleKeyword, ruleCategory);
-    toast.success(`Rule created: "${ruleKeyword.trim()}" ➔ ${ruleCategory}`);
-    setRuleKeyword('');
-  };
-
-  const handleDeleteCard = async (cardId, cardName) => {
-    const isConfirmed = await confirm({
-      title: 'Delete Credit Card',
-      message: `Are you sure you want to delete card '${cardName}'?`,
-      confirmText: 'Delete Card',
-      isDanger: true
-    });
-
-    if (!isConfirmed) return;
-
-    try {
-      const res = await authFetch(`/api/cards/${cardId}`, { method: 'DELETE' });
-      if (res.ok) {
-        toast.success(`Card '${cardName}' deleted.`);
-        await fetchData();
-      } else {
-        const err = await res.json();
-        toast.error(err.detail || 'Failed to delete card.', 'Delete Error');
-      }
-    } catch (err) {
-      console.error("Error deleting card:", err);
-      toast.error('Connection error while deleting card.', 'Error');
+  const handlePurgeData = async () => {
+    if (!someSelected) {
+      await alert({
+        title: 'No Selection',
+        message: 'Please select at least one data category (transactions, payslips, bank accounts, cards, or banks) to purge.',
+        type: 'warning'
+      });
+      return;
     }
-  };
 
-  const handleDeleteAccount = async (accountId, accountName) => {
-    const isConfirmed = await confirm({
-      title: 'Delete Account',
-      message: `Are you sure you want to delete account '${accountName}'? All associated transactions will be removed.`,
-      confirmText: 'Delete Account',
+    const selectedKeys = Object.entries(purgeSelections)
+      .filter(([_, v]) => v)
+      .map(([k]) => {
+        switch (k) {
+          case 'transactions': return 'Transactions & Statement rows';
+          case 'payslips': return 'Salary Payslips & Tax deductions';
+          case 'bank': return 'Connected Banks & Institutions';
+          case 'card': return 'Credit Cards & Limits';
+          case 'account': return 'Bank Accounts & Balances';
+          default: return k;
+        }
+      });
+
+    const confirmed = await confirm({
+      title: 'Confirm Selective Data Purge',
+      message: (
+        <div className="space-y-2">
+          <p>You are about to permanently delete the following local records:</p>
+          <ul className="list-disc pl-5 space-y-1 font-semibold text-rose-500">
+            {selectedKeys.map(k => <li key={k}>{k}</li>)}
+          </ul>
+          <p className="text-[11px] text-[#8B978F] pt-1">This action cannot be undone. Other unselected categories will remain intact.</p>
+        </div>
+      ),
+      confirmText: 'Permanently Purge Selected',
+      cancelText: 'Keep My Data',
       isDanger: true
     });
 
-    if (!isConfirmed) return;
+    if (!confirmed) return;
 
-    try {
-      const res = await authFetch(`/api/accounts/${accountId}`, { method: 'DELETE' });
-      if (res.ok) {
-        toast.success(`Account '${accountName}' deleted.`);
-        await fetchData();
-      } else {
-        const err = await res.json();
-        toast.error(err.detail || 'Failed to delete account.', 'Delete Error');
-      }
-    } catch (err) {
-      console.error("Error deleting account:", err);
-      toast.error('Connection error while deleting account.', 'Error');
-    }
-  };
-
-  const handlePurgePayslips = async () => {
-    const isConfirmed = await confirm({
-      title: "Purge Payslips",
-      message: "Are you sure you want to permanently delete all payslip data? This action cannot be undone.",
-      confirmText: "Yes, delete everything",
-      isDanger: true
-    });
-    
-    if (!isConfirmed) return;
-    
     setIsPurging(true);
     try {
-      const res = await authFetch('/api/payslips/purge', { method: 'DELETE' });
+      const res = await authFetch('/api/data/selective-purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(purgeSelections)
+      });
+      const data = await res.json();
       if (res.ok) {
-        toast.success('All payslip data has been wiped.');
         await fetchData();
+        await alert({
+          title: 'Purge Complete',
+          message: data.message || 'The selected records have been purged from your local database.',
+          type: 'success'
+        });
       } else {
-        toast.error('Failed to wipe payslips.');
+        await alert({
+          title: 'Purge Error',
+          message: data.detail || 'Failed to purge data.',
+          type: 'error'
+        });
       }
     } catch (err) {
-      toast.error('Network error during wipe.');
+      console.error('Failed to purge data:', err);
+      await alert({
+        title: 'Network Error',
+        message: 'Could not communicate with the local server to execute purge.',
+        type: 'error'
+      });
     } finally {
       setIsPurging(false);
     }
   };
 
-
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-16">
+    <div className="space-y-8 animate-in fade-in duration-200 pb-12">
       
-      <div className="flex items-center gap-2">
-        <SettingsIcon className={`h-5 w-5 ${style('text-[#5EEAD4]', 'text-[#0F766E]')}`} />
-        <h2 className="text-base font-bold">System Configuration & Preferences</h2>
-      </div>
+      {/* 1. Header */}
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 pb-2 border-b border-[#E4E8E3]/30">
+        <div>
+          <h2 className={`text-xl sm:text-2xl font-bold tracking-tight ${isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'}`}>
+            System & Privacy Settings
+          </h2>
+          <p className={`text-xs mt-0.5 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+            Local runtime configuration, merchant classification rules, and categories
+          </p>
+        </div>
 
-      {/* 1. Theme & Appearance */}
-      <div className={`p-6 rounded-2xl border-0 flex flex-col gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-          Appearance & Design System
-        </h3>
-
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col">
-            <span className="text-xs font-bold">Neumorphic Interface Theme</span>
-            <span className="text-xs text-slate-400 font-normal">Toggle between Dark and Light neumorphic aesthetics</span>
-          </div>
-
-          <div className={`flex items-center p-1 rounded-xl gap-1 ${style('neu-inset-dark', 'neu-inset-light')}`}>
-            <button
-              type="button"
-              onClick={() => setTheme('dark')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-0 cursor-pointer ${
-                theme === 'dark'
-                  ? style('neu-flat-dark text-amber-400', 'bg-slate-800 text-white')
-                  : 'text-slate-400'
-              }`}
-            >
-              <Moon className="h-3.5 w-3.5" />
-              Dark
-            </button>
-            <button
-              type="button"
-              onClick={() => setTheme('light')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-0 cursor-pointer ${
-                theme === 'light'
-                  ? style('neu-flat-light text-indigo-600', 'bg-white text-black')
-                  : 'text-slate-400'
-              }`}
-            >
-              <Sun className="h-3.5 w-3.5" />
-              Light
-            </button>
-          </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="verified">Local-First Architecture</Badge>
         </div>
       </div>
 
-      {/* 2. Connected Bank Accounts Management */}
-      <div className={`p-6 rounded-2xl border-0 flex flex-col gap-5 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Landmark className="h-5 w-5 text-emerald-400" />
-            <div>
-              <h3 className={`text-xs font-bold uppercase tracking-wider ${style('text-slate-200', 'text-slate-700')}`}>
-                Connected Bank Accounts ({accounts.length})
-              </h3>
-              <span className="text-xs text-slate-400 font-normal">
-                Manage your liquid savings, current, and depository accounts
-              </span>
-            </div>
-          </div>
-          <Button 
-            variant="primary" 
-            size="sm" 
-            onClick={() => setIsAddAccountOpen(true)}
-            icon={PlusCircle}
-          >
-            Add Bank Account
-          </Button>
+      {/* 2. Privacy & Data Sovereignty Banner (Section 25) */}
+      <div className={`p-6 rounded-[16px] border ${
+        isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FAF6F1] border-[#E5D4C1]'
+      }`}>
+        <div className="flex items-center gap-2 mb-2">
+          <ShieldCheck className="h-5 w-5 text-[#3F8F5E]" />
+          <h3 className="text-sm font-bold tracking-tight">YOUR DATA STAYS WITH YOU</h3>
         </div>
-
-        {accounts.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-500 italic">
-            No bank accounts added yet. Click &quot;Add Bank Account&quot; to link an account.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-5">
-            {accountsByBank.map(group => (
-              <div key={group.bank} className="flex flex-col gap-2">
-                <div className="flex items-center gap-2 px-0.5">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    {group.bank}
-                  </span>
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${style('bg-slate-800/50 text-slate-500', 'bg-slate-200 text-slate-500')}`}>
-                    {group.items.length}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {group.items.map(acc => {
-                    const bal = parseFloat(acc.balance || 0);
-                    const isLiability = String(acc.classification || '').toUpperCase() === 'LIABILITY' || bal < 0;
-
-                    return (
-                      <div
-                        key={acc.id}
-                        className={`p-4 rounded-2xl flex items-center gap-3 min-w-0 border-0 ${style('neu-inset-dark', 'neu-inset-light')}`}
-                      >
-                        <div className={`p-2.5 rounded-xl shrink-0 ${style('bg-[#181828] text-slate-400', 'bg-white text-slate-500')}`}>
-                          <Landmark className="h-4 w-4" />
-                        </div>
-
-                        <div className="flex flex-col min-w-0 flex-1 gap-1.5">
-                          <span className={`text-sm font-semibold truncate ${style('text-slate-100', 'text-slate-800')}`} title={acc.name}>
-                            {acc.name}
-                          </span>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${style('bg-indigo-500/10 text-indigo-300', 'bg-indigo-100 text-indigo-600')}`}>
-                              {acc.subtype || 'Account'}
-                            </span>
-                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                              isLiability
-                                ? 'bg-red-500/10 text-red-400'
-                                : 'bg-emerald-500/10 text-emerald-400'
-                            }`}>
-                              {acc.classification || (isLiability ? 'Liability' : 'Asset')}
-                            </span>
-                          </div>
-                        </div>
-
-                        <span className={`text-sm font-bold tabular-nums shrink-0 ${isLiability ? 'text-red-400' : 'text-emerald-400'}`}>
-                          {formatCurrency(bal)}
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteAccount(acc.id, acc.name)}
-                          className={`p-2 rounded-xl shrink-0 border-0 cursor-pointer transition-colors ${style('text-slate-500 hover:text-red-400 hover:bg-red-500/10', 'text-slate-400 hover:text-red-500 hover:bg-red-50')}`}
-                          title="Delete Account"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 3. Registered Credit Cards Management */}
-      <div className={`p-6 rounded-2xl border-0 flex flex-col gap-5 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-indigo-400" />
-            <div>
-              <h3 className={`text-xs font-bold uppercase tracking-wider ${style('text-slate-200', 'text-slate-700')}`}>
-                Registered Credit Cards ({cards.length})
-              </h3>
-              <span className="text-xs text-slate-400 font-normal">
-                Manage billing statements, reward currencies & spend caps
-              </span>
-            </div>
-          </div>
-          <Button 
-            variant="secondary" 
-            size="sm" 
-            onClick={() => setIsAddCardOpen(true)}
-            icon={PlusCircle}
-          >
-            Register Card
-          </Button>
-        </div>
-
-        {cards.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-500 italic">
-            No credit cards registered yet. Click &quot;Register Card&quot; to add a new card.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {cards.map(card => (
-              <div 
-                key={card.id}
-                className={`p-3.5 px-4 rounded-xl flex items-center justify-between border-0 ${style('neu-inset-dark', 'neu-inset-light')}`}
-              >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <NetworkLogo network={card.network} />
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-bold truncate">{card.card_name}</span>
-                    <span className="text-xs text-slate-400 font-normal">
-                      Statement Day: <strong className={style('text-slate-200', 'text-slate-700')}>{card.statement_date}</strong> • Credit Limit: <strong className={style('text-slate-200', 'text-slate-700')}>{formatCurrency(card.monthly_cap || 100000, false)}</strong>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setCardToEdit(card)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 border-0 bg-transparent cursor-pointer transition-colors"
-                    title="Edit Card"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCard(card.id, card.card_name)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 border-0 bg-transparent cursor-pointer transition-colors"
-                    title="Delete Card"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 4. Spend Categories Management */}
-      <div className={`p-6 rounded-2xl border-0 flex flex-col gap-5 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Tag className="h-5 w-5 text-amber-400" />
-            <div>
-              <h3 className={`text-xs font-bold uppercase tracking-wider ${style('text-slate-200', 'text-slate-700')}`}>
-                Spend Categories ({categories.length})
-              </h3>
-              <span className="text-xs text-slate-400 font-normal">
-                Add, rename, and manage classification categories across transactions
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Add Category Form */}
-        <form onSubmit={handleAddCategory} className="flex flex-col sm:flex-row gap-3 items-center">
-          <input
-            type="text"
-            placeholder="New Category Name (e.g. Healthcare, Education, Travel)"
-            value={newCategoryName}
-            onChange={e => setNewCategoryName(e.target.value)}
-            disabled={categoryLoading}
-            className={`w-full sm:flex-1 rounded-xl px-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-          />
-
-          <Button type="submit" variant="primary" size="sm" loading={categoryLoading} icon={Plus}>
-            Add Category
-          </Button>
-        </form>
-
-        {categoryError && (
-          <div className="p-3 rounded-xl bg-red-950/20 text-red-400 text-xs border border-red-500/20 font-medium">
-            {categoryError}
-          </div>
-        )}
-
-        {/* Category List */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
-          {categories.map(cat => {
-            const count = transactions.filter(t => t.category === cat.name).length;
-            const isOthers = cat.name.toLowerCase() === 'others';
-
-            return (
-              <div 
-                key={cat.id}
-                className={`p-2.5 px-3 rounded-xl flex items-center justify-between border-0 transition-all ${style('neu-inset-dark', 'neu-inset-light')}`}
-              >
-                <div className="flex items-center gap-2 truncate">
-                  <span className="text-xs font-bold truncate">
-                    {cat.name}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-semibold px-1.5 py-0.5 rounded-md bg-slate-800/30">
-                    {count} txs
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setCategoryToEdit(cat)}
-                    className="p-1 rounded-lg text-slate-400 hover:text-amber-300 border-0 bg-transparent cursor-pointer transition-colors"
-                    title="Rename Category"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                  {!isOthers && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteCategory(cat)}
-                      className="p-1 rounded-lg text-slate-400 hover:text-red-400 border-0 bg-transparent cursor-pointer transition-colors"
-                      title="Delete Category"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 5. Category Override Rules Engine */}
-      <div className={`p-6 rounded-2xl border-0 flex flex-col gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-          Category Override Rules ({rules.length})
-        </h3>
-        <p className="text-xs text-slate-400 font-normal">
-          Transactions matching these keywords will be automatically assigned to the designated category.
+        <p className={`text-xs max-w-2xl leading-relaxed ${isDark ? 'text-[#C2CCC5]' : 'text-[#4F5D55]'}`}>
+          WiseRaman runs completely isolated on your private machine. We do not maintain any cloud financial databases, advertising tracking, or external telemetry pipelines.
         </p>
 
-        {/* Add Rule Form */}
-        <form onSubmit={handleCreateRule} className="flex flex-col sm:flex-row gap-3 items-center">
-          <input
-            type="text"
-            placeholder="Keyword (e.g. UBER, ZOMATO, NETFLIX)"
-            value={ruleKeyword}
-            onChange={e => setRuleKeyword(e.target.value)}
-            className={`w-full sm:w-1/2 rounded-xl px-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-          />
-
-          <select
-            value={ruleCategory}
-            onChange={e => setRuleCategory(e.target.value)}
-            className={`w-full sm:w-1/3 rounded-xl px-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-          >
-            {categories.map(c => (
-              <option key={c.id} value={c.name}>{c.name}</option>
-            ))}
-          </select>
-
-          <Button type="submit" variant="primary" size="sm" icon={Plus}>
-            Add Rule
-          </Button>
-        </form>
-
-        {/* Rules List */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-          {rules.map(rule => (
-            <div 
-              key={rule.id}
-              className={`p-2.5 px-3 rounded-xl flex items-center justify-between border-0 ${style('neu-inset-dark', 'neu-inset-light')}`}
-            >
-              <div className="flex items-center gap-2">
-                <span className={`text-xs font-mono font-bold ${style('text-slate-200', 'text-slate-700')}`}>
-                  {rule.keyword}
-                </span>
-                <span className="text-xs text-slate-400">&rarr;</span>
-                <span className="text-xs font-semibold text-emerald-400">
-                  {rule.category}
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => deleteRule(rule.id)}
-                className="text-slate-400 hover:text-red-400 border-0 bg-transparent cursor-pointer p-1"
-                title="Delete Rule"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 text-xs font-medium">
+          <div className="flex items-center gap-2 text-[#3F8F5E]">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>Financial data stored locally</span>
+          </div>
+          <div className="flex items-center gap-2 text-[#3F8F5E]">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>Local AI processing (Ollama)</span>
+          </div>
+          <div className="flex items-center gap-2 text-[#3F8F5E]">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>No advertising profile</span>
+          </div>
+          <div className="flex items-center gap-2 text-[#3F8F5E]">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>No cloud financial sync</span>
+          </div>
         </div>
       </div>
 
-      {/* DANGER ZONE */}
-      <div className={`p-4 sm:p-5 rounded-2xl border-0 mb-6 ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <div className="flex items-center gap-2 mb-4">
-          <div className="p-1.5 rounded-lg bg-red-500/10 text-red-500">
-            <AlertTriangle className="h-4 w-4" />
-          </div>
-          <h2 className={`text-sm font-bold uppercase tracking-wider ${style('text-red-400', 'text-red-600')}`}>
-            Danger Zone
-          </h2>
-        </div>
+      {/* 3. Settings Sections */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-red-500/10 bg-red-500/5">
-          <div className="flex flex-col gap-1">
-            <span className={`text-sm font-bold ${style('text-slate-200', 'text-slate-800')}`}>Wipe Payslip Data</span>
-            <span className="text-xs text-slate-400">Permanently delete all imported payslips from the database. This action cannot be undone.</span>
+        {/* Appearance & Preferences */}
+        <div className={`p-6 rounded-[16px] border flex flex-col justify-between ${
+          isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
+        }`}>
+          <div>
+            <h3 className="text-sm font-bold tracking-tight mb-4">Appearance</h3>
+            <div className="flex items-center justify-between text-xs py-3 border-b border-[#E4E8E3]/20">
+              <div>
+                <div className="font-semibold">Interface Theme</div>
+                <div className="text-[11px] text-[#8B978F]">Toggle between Pastel Light and Soft Dark</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={theme === 'light' ? 'primary' : 'secondary'}
+                  size="xs"
+                  onClick={() => setTheme('light')}
+                  icon={Sun}
+                >
+                  Light
+                </Button>
+                <Button
+                  variant={theme === 'dark' ? 'primary' : 'secondary'}
+                  size="xs"
+                  onClick={() => setTheme('dark')}
+                  icon={Moon}
+                >
+                  Dark
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-xs py-3">
+              <div>
+                <div className="font-semibold">Brand Accent</div>
+                <div className="text-[11px] text-[#8B978F]">WiseRaman Pastel Green & Warm Earth</div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-4 w-4 rounded-full bg-[#5BAE78]" title="Pastel Green" />
+                <span className="h-4 w-4 rounded-full bg-[#A77B58]" title="Warm Brown" />
+              </div>
+            </div>
           </div>
-          <Button 
-            variant="danger" 
-            size="sm" 
-            icon={Trash2} 
-            onClick={handlePurgePayslips}
-            disabled={isPurging}
-          >
-            {isPurging ? 'Purging...' : 'Purge Payslips'}
-          </Button>
+
+          <div className="pt-4 border-t border-[#E4E8E3]/20 text-[11px] text-[#8B978F]">
+            Design follows 70% Neutral / 20% Green / 10% Earth.
+          </div>
         </div>
+
+        {/* Categories Management */}
+        <div className={`p-6 rounded-[16px] border flex flex-col justify-between ${
+          isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
+        }`}>
+          <div>
+            <h3 className="text-sm font-bold tracking-tight mb-2">Category Management</h3>
+            <p className="text-xs text-[#8B978F] mb-4">
+              Add or remove expense and income categories
+            </p>
+
+            <form onSubmit={handleCreateCategory} className="flex gap-2 mb-4">
+              <input
+                type="text"
+                placeholder="New Category Name..."
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                className={`flex-1 px-3 py-1.5 text-xs rounded-[10px] border outline-none ${
+                  isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                }`}
+              />
+              <Button type="submit" variant="primary" size="xs" loading={catLoading} icon={Plus}>
+                Create
+              </Button>
+            </form>
+
+            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+              {categories.map(c => (
+                <span
+                  key={c.id || c.name}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[8px] text-xs border bg-black/5 dark:bg-white/5"
+                >
+                  <span>{c.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCategory(c.name)}
+                    className="p-0.5 text-[#8B978F] hover:text-[#C85C5C] border-0 bg-transparent cursor-pointer"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-[#E4E8E3]/20 text-[11px] text-[#8B978F]">
+            Categories are mapped to ML classification targets.
+          </div>
+        </div>
+
+        {/* Merchant Rules Engine */}
+        <div className={`p-6 rounded-[16px] border flex flex-col justify-between ${
+          isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
+        }`}>
+          <div>
+            <h3 className="text-sm font-bold tracking-tight mb-2">Merchant Classification Rules</h3>
+            <p className="text-xs text-[#8B978F] mb-4">
+              Deterministic string patterns for auto-categorization
+            </p>
+
+            <form onSubmit={handleAddRule} className="flex gap-2 mb-4">
+              <input
+                type="text"
+                placeholder="e.g. ZOMATO or SWIGGY"
+                value={ruleKeyword}
+                onChange={(e) => setRuleKeyword(e.target.value)}
+                className={`flex-1 px-3 py-1.5 text-xs rounded-[10px] border outline-none ${
+                  isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                }`}
+              />
+              <select
+                value={ruleCategory}
+                onChange={(e) => setRuleCategory(e.target.value)}
+                className={`px-3 py-1.5 text-xs rounded-[10px] border outline-none cursor-pointer ${
+                  isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                }`}
+              >
+                {categories.map(c => (
+                  <option key={c.id || c.name} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+              <Button type="submit" variant="primary" size="xs" icon={Plus}>
+                Add
+              </Button>
+            </form>
+
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              {rules.map(r => (
+                <div key={r.id} className="flex items-center justify-between p-2 rounded-[8px] border text-xs bg-black/5 dark:bg-white/5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-semibold">{r.match_pattern}</span>
+                    <span className="text-[#8B978F]">→</span>
+                    <Badge variant="brown" size="xs">{r.target_category}</Badge>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => deleteRule(r.id)}
+                    className="p-1 text-[#C85C5C] hover:opacity-80 border-0 bg-transparent cursor-pointer"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-[#E4E8E3]/20 mt-4 text-[11px] text-[#8B978F]">
+            Rules are evaluated in memory before LLM fallback.
+          </div>
+        </div>
+
+        {/* Database Danger Zone: Selective Purge */}
+        <div className={`p-6 rounded-[16px] border flex flex-col justify-between ${
+          isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
+        }`}>
+          <div>
+            <div className="flex items-center gap-2 text-[#C85C5C] mb-2">
+              <AlertOctagon className="h-5 w-5" />
+              <h3 className="text-sm font-bold tracking-tight">Selective Data Purge</h3>
+            </div>
+            <p className="text-xs text-[#8B978F] mb-4">
+              Select specific entities or perform a complete wipe of your local financial database.
+            </p>
+
+            {/* Checkbox Options Grid */}
+            <div className={`p-4 rounded-[12px] border mb-4 space-y-2.5 text-xs ${
+              isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+            }`}>
+              {/* Select All */}
+              <label className="flex items-center gap-2.5 font-bold cursor-pointer select-none pb-2 border-b border-[#E4E8E3]/20">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  className="rounded border-[#E4E8E3] text-[#3F8F5E] focus:ring-[#3F8F5E] h-4 w-4 cursor-pointer"
+                />
+                <span className="text-[#3F8F5E]">Select All (Complete Database Wipe)</span>
+              </label>
+
+              {/* Individual Entities */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={purgeSelections.transactions}
+                    onChange={() => toggleSelection('transactions')}
+                    className="rounded border-[#E4E8E3] text-[#3F8F5E] focus:ring-[#3F8F5E] h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <span>Transactions ({transactions.length})</span>
+                </label>
+
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={purgeSelections.payslips}
+                    onChange={() => toggleSelection('payslips')}
+                    className="rounded border-[#E4E8E3] text-[#3F8F5E] focus:ring-[#3F8F5E] h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <span>Payslips & Deductions</span>
+                </label>
+
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={purgeSelections.account}
+                    onChange={() => toggleSelection('account')}
+                    className="rounded border-[#E4E8E3] text-[#3F8F5E] focus:ring-[#3F8F5E] h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <span>Bank Accounts ({accounts.length})</span>
+                </label>
+
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={purgeSelections.card}
+                    onChange={() => toggleSelection('card')}
+                    className="rounded border-[#E4E8E3] text-[#3F8F5E] focus:ring-[#3F8F5E] h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <span>Credit Cards ({cards.length})</span>
+                </label>
+
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={purgeSelections.bank}
+                    onChange={() => toggleSelection('bank')}
+                    className="rounded border-[#E4E8E3] text-[#3F8F5E] focus:ring-[#3F8F5E] h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <span>Banks & Institutions</span>
+                </label>
+              </div>
+            </div>
+
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={handlePurgeData}
+              disabled={!someSelected || isPurging}
+              loading={isPurging}
+              icon={Trash2}
+            >
+              Purge Selected Data
+            </Button>
+          </div>
+
+          <div className="pt-4 border-t border-[#E4E8E3]/20 mt-4 text-[11px] text-[#8B978F]">
+            Destructive action requires explicit confirmation. Only chosen entities will be removed.
+          </div>
+        </div>
+
       </div>
-
-      {/* Add Bank Account Modal */}
-      <AddAccountModal
-        isOpen={isAddAccountOpen}
-        onClose={() => setIsAddAccountOpen(false)}
-      />
-
-      {/* Register Credit Card Modal */}
-      <AddCardModal
-        isOpen={isAddCardOpen}
-        onClose={() => setIsAddCardOpen(false)}
-      />
-
-      {/* Edit Credit Card Modal */}
-      <EditCardModal
-        isOpen={!!cardToEdit}
-        onClose={() => setCardToEdit(null)}
-        card={cardToEdit}
-      />
-
-      {/* Edit Category Modal */}
-      <EditCategoryModal
-        isOpen={!!categoryToEdit}
-        onClose={() => setCategoryToEdit(null)}
-        category={categoryToEdit}
-      />
 
     </div>
   );

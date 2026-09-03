@@ -1,21 +1,34 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { useTheme } from './ThemeContext';
-import { CheckCircle2, AlertCircle, AlertTriangle, Info, X, Trash2 } from 'lucide-react';
+import { Button } from '../components/atoms/Button';
+import { 
+  CheckCircle2, 
+  AlertCircle, 
+  AlertTriangle, 
+  AlertOctagon, 
+  Info, 
+  X, 
+  Trash2 
+} from 'lucide-react';
 
 const ToastContext = createContext(null);
 
 export const ToastProvider = ({ children }) => {
-  const { style } = useTheme();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const [toasts, setToasts] = useState([]);
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const [alertDialog, setAlertDialog] = useState(null);
+  
   const confirmResolveRef = useRef(null);
+  const alertResolveRef = useRef(null);
 
-  // Add toast
+  // Add toast notification
   const addToast = useCallback((type, message, title) => {
     const id = Date.now() + Math.random().toString(36).substr(2, 9);
     setToasts(prev => [...prev, { id, type, message, title }]);
 
-    // Auto-remove after 4.5 seconds
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 4500);
@@ -32,8 +45,14 @@ export const ToastProvider = ({ children }) => {
     info: (msg, title = 'Notice') => addToast('info', msg, title),
   };
 
-  // Promise-based Confirm Dialog
-  const confirm = useCallback(({ title = 'Confirm Action', message, confirmText = 'Confirm', cancelText = 'Cancel', isDanger = true }) => {
+  // Promise-based Custom Confirmation Dialog
+  const confirm = useCallback(({ 
+    title = 'Confirm Action', 
+    message, 
+    confirmText = 'Confirm', 
+    cancelText = 'Cancel', 
+    isDanger = true 
+  }) => {
     return new Promise((resolve) => {
       confirmResolveRef.current = resolve;
       setConfirmDialog({
@@ -54,91 +73,185 @@ export const ToastProvider = ({ children }) => {
     setConfirmDialog(null);
   };
 
+  // Promise-based Custom Alert Dialog
+  const alert = useCallback(({ 
+    title = 'Notice', 
+    message, 
+    buttonText = 'Understood', 
+    type = 'info' 
+  }) => {
+    return new Promise((resolve) => {
+      alertResolveRef.current = resolve;
+      setAlertDialog({
+        title,
+        message,
+        buttonText,
+        type
+      });
+    });
+  }, []);
+
+  const handleAlertClose = () => {
+    if (alertResolveRef.current) {
+      alertResolveRef.current(true);
+      alertResolveRef.current = null;
+    }
+    setAlertDialog(null);
+  };
+
   return (
-    <ToastContext.Provider value={{ toast, confirm }}>
+    <ToastContext.Provider value={{ toast, confirm, alert }}>
       {children}
 
       {/* Floating Toast Notification Container */}
-      <div className="fixed bottom-24 right-4 md:bottom-5 md:right-5 z-[9999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0">
+      <div className="fixed bottom-20 right-4 md:bottom-5 md:right-5 z-[9999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0">
         {toasts.map(t => {
-          let icon = <Info className="h-5 w-5 text-blue-400 shrink-0" />;
-          let borderAccent = 'border-blue-500/40';
-          let titleColor = 'text-blue-400';
+          let icon = <Info className="h-4 w-4 text-[#5BAE78] shrink-0" />;
+          let borderAccent = 'border-[#5BAE78]/30';
+          let titleColor = 'text-[#3F8F5E] dark:text-[#5BAE78]';
 
           if (t.type === 'success') {
-            icon = <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />;
-            borderAccent = 'border-emerald-500/40';
-            titleColor = 'text-emerald-400';
+            icon = <CheckCircle2 className="h-4 w-4 text-[#3F8F5E] shrink-0" />;
+            borderAccent = 'border-[#3F8F5E]/30';
+            titleColor = 'text-[#3F8F5E] dark:text-[#7FC39A]';
           } else if (t.type === 'error') {
-            icon = <AlertCircle className="h-5 w-5 text-red-400 shrink-0" />;
-            borderAccent = 'border-red-500/40';
-            titleColor = 'text-red-400';
+            icon = <AlertCircle className="h-4 w-4 text-[#C85C5C] shrink-0" />;
+            borderAccent = 'border-[#C85C5C]/30';
+            titleColor = 'text-[#C85C5C]';
           } else if (t.type === 'warning') {
-            icon = <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />;
-            borderAccent = 'border-amber-500/40';
-            titleColor = 'text-amber-400';
+            icon = <AlertTriangle className="h-4 w-4 text-[#B78332] shrink-0" />;
+            borderAccent = 'border-[#B78332]/30';
+            titleColor = 'text-[#B78332]';
           }
 
           return (
             <div
               key={t.id}
-              className={`pointer-events-auto p-4 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-start gap-3 transition-all duration-300 animate-in slide-in-from-right-8 fade-in ${borderAccent} ${style('neu-flat-dark bg-[#12121E]/95 text-slate-100', 'neu-flat-light bg-white/95 text-slate-800')}`}
+              className={`pointer-events-auto p-3.5 rounded-[12px] shadow-lg border flex items-start gap-3 transition-all duration-200 animate-in slide-in-from-right-6 fade-in ${borderAccent} ${
+                isDark ? 'bg-[#171E19] text-[#F1F5F2]' : 'bg-[#FFFFFF] text-[#1D2822]'
+              }`}
             >
-              {icon}
+              <div className="pt-0.5">{icon}</div>
               <div className="flex-1 flex flex-col min-w-0 pr-1">
                 {t.title && <span className={`text-xs font-bold ${titleColor}`}>{t.title}</span>}
-                <span className={`text-xs font-normal leading-relaxed mt-0.5 break-words ${style('text-slate-300', 'text-slate-600')}`}>
+                <span className={`text-xs font-normal leading-relaxed mt-0.5 break-words ${
+                  isDark ? 'text-[#C2CCC5]' : 'text-[#4F5D55]'
+                }`}>
                   {t.message}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => removeToast(t.id)}
-                className="text-slate-400 hover:text-slate-200 border-0 bg-transparent cursor-pointer p-0.5"
+                className="text-[#8B978F] hover:text-foreground border-0 bg-transparent cursor-pointer p-0.5"
               >
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           );
         })}
       </div>
 
-      {/* Modern Confirmation Modal Dialog */}
+      {/* Custom Confirmation Modal Dialog */}
       {confirmDialog && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className={`w-full max-w-md p-6 rounded-2xl border-0 shadow-2xl flex flex-col gap-4 animate-in zoom-in-95 duration-200 ${style('neu-flat-dark text-[#EAEAEA]', 'neu-flat-light text-[#2D3436]')}`}>
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity" 
+            onClick={() => handleConfirmClose(false)} 
+          />
+          <div className={`relative w-full max-w-md p-6 rounded-[16px] border shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-4 ${
+            isDark ? 'bg-[#171E19] border-[#2A352D] text-[#F1F5F2]' : 'bg-[#FFFFFF] border-[#E4E8E3] text-[#1D2822]'
+          }`}>
             <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-xl flex items-center justify-center ${confirmDialog.isDanger ? 'bg-red-500/15 text-red-400 border border-red-500/30' : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'}`}>
-                {confirmDialog.isDanger ? <Trash2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+              <div className={`p-2.5 rounded-[10px] flex items-center justify-center ${
+                confirmDialog.isDanger 
+                  ? 'bg-[#C85C5C]/15 text-[#C85C5C]' 
+                  : 'bg-[#B78332]/15 text-[#B78332]'
+              }`}>
+                {confirmDialog.isDanger ? <AlertOctagon className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
               </div>
-              <h3 className="text-sm font-bold tracking-tight">
-                {confirmDialog.title}
-              </h3>
+              <div>
+                <h3 className="text-sm font-bold tracking-tight">
+                  {confirmDialog.title}
+                </h3>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-[#8B978F]">Action Verification</span>
+              </div>
             </div>
 
-            <p className="text-xs text-slate-400 leading-relaxed font-normal">
+            <div className={`text-xs leading-relaxed ${isDark ? 'text-[#C2CCC5]' : 'text-[#4F5D55]'}`}>
               {confirmDialog.message}
-            </p>
+            </div>
 
-            <div className="flex items-center justify-end gap-3 mt-2 pt-3 border-t border-slate-800/20">
-              <button
-                type="button"
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-[#E4E8E3]/20">
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => handleConfirmClose(false)}
-                className={`px-4 py-2 text-xs font-bold rounded-xl border-0 cursor-pointer transition-all ${style('neu-flat-dark text-slate-300 hover:text-white', 'neu-flat-light text-slate-700 hover:text-black')}`}
               >
                 {confirmDialog.cancelText}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant={confirmDialog.isDanger ? 'danger' : 'primary'}
+                size="sm"
                 onClick={() => handleConfirmClose(true)}
-                className={`px-4 py-2 text-xs font-bold rounded-xl border-0 cursor-pointer transition-all ${
-                  confirmDialog.isDanger
-                    ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20'
-                    : 'bg-[#5EEAD4] hover:bg-[#2DD4BF] text-[#0A0E14] shadow-lg shadow-[#5EEAD4]/20'
-                }`}
               >
                 {confirmDialog.confirmText}
-              </button>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Alert Modal Dialog */}
+      {alertDialog && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity" 
+            onClick={handleAlertClose} 
+          />
+          <div className={`relative w-full max-w-md p-6 rounded-[16px] border shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-4 ${
+            isDark ? 'bg-[#171E19] border-[#2A352D] text-[#F1F5F2]' : 'bg-[#FFFFFF] border-[#E4E8E3] text-[#1D2822]'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`p-2.5 rounded-[10px] flex items-center justify-center ${
+                alertDialog.type === 'error' 
+                  ? 'bg-[#C85C5C]/15 text-[#C85C5C]' 
+                  : alertDialog.type === 'success'
+                    ? 'bg-[#3F8F5E]/15 text-[#3F8F5E]'
+                    : alertDialog.type === 'warning'
+                      ? 'bg-[#B78332]/15 text-[#B78332]'
+                      : 'bg-[#5BAE78]/15 text-[#5BAE78]'
+              }`}>
+                {alertDialog.type === 'error' ? (
+                  <AlertOctagon className="h-5 w-5" />
+                ) : alertDialog.type === 'success' ? (
+                  <CheckCircle2 className="h-5 w-5" />
+                ) : alertDialog.type === 'warning' ? (
+                  <AlertTriangle className="h-5 w-5" />
+                ) : (
+                  <Info className="h-5 w-5" />
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-bold tracking-tight">
+                  {alertDialog.title}
+                </h3>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-[#8B978F]">System Notice</span>
+              </div>
+            </div>
+
+            <div className={`text-xs leading-relaxed ${isDark ? 'text-[#C2CCC5]' : 'text-[#4F5D55]'}`}>
+              {alertDialog.message}
+            </div>
+
+            <div className="flex items-center justify-end pt-4 border-t border-[#E4E8E3]/20">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleAlertClose}
+              >
+                {alertDialog.buttonText}
+              </Button>
             </div>
           </div>
         </div>
@@ -151,6 +264,14 @@ export const useToast = () => {
   const context = useContext(ToastContext);
   if (!context) {
     throw new Error('useToast must be used within a ToastProvider');
+  }
+  return context;
+};
+
+export const useDialog = () => {
+  const context = useContext(ToastContext);
+  if (!context) {
+    throw new Error('useDialog must be used within a ToastProvider');
   }
   return context;
 };

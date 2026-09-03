@@ -49,3 +49,27 @@ export const maskAccountNumber = (accNumber) => {
   if (str.length <= 4) return `...${str}`;
   return `...${str.slice(-4)}`;
 };
+
+export const extractErrorMessage = (detail, fallback = 'An error occurred.') => {
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map(item => {
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object' && item !== null) {
+          if (item.msg) {
+            const loc = Array.isArray(item.loc) ? item.loc.filter(l => l !== 'body').join('.') : '';
+            return loc ? `${loc}: ${item.msg}` : item.msg;
+          }
+          return JSON.stringify(item);
+        }
+        return String(item);
+      })
+      .join('; ');
+  }
+  if (typeof detail === 'object' && detail !== null) {
+    return detail.msg || detail.message || JSON.stringify(detail);
+  }
+  return String(detail);
+};

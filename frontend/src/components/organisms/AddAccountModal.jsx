@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { Button } from '../atoms/Button';
-import { Input } from '../atoms/Input';
-import { Select } from '../atoms/Select';
-import { Landmark, X, PlusCircle, CheckCircle2 } from 'lucide-react';
+import { Landmark, X } from 'lucide-react';
+import { extractErrorMessage } from '../../utils/formatters';
 
 export const AddAccountModal = ({ isOpen, onClose }) => {
-  const { style } = useTheme();
-  const { banks, fetchData , authFetch} = useFinance();
+  const { theme } = useTheme();
+  const { banks, fetchData, authFetch } = useFinance();
+  const isDark = theme === 'dark';
 
   const [name, setName] = useState('');
   const [bankId, setBankId] = useState(banks[0]?.id || '');
@@ -17,8 +17,7 @@ export const AddAccountModal = ({ isOpen, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Update default bank if banks load late
-  React.useEffect(() => {
+  useEffect(() => {
     if (!bankId && banks.length > 0) {
       setBankId(banks[0].id);
     }
@@ -63,8 +62,8 @@ export const AddAccountModal = ({ isOpen, onClose }) => {
         await fetchData();
         handleClose();
       } else {
-        const data = await res.json();
-        setError(data.detail || 'Failed to create account.');
+        const data = await res.json().catch(() => ({}));
+        setError(extractErrorMessage(data.detail, 'Failed to create account.'));
       }
     } catch (err) {
       setError('Network error while connecting to server.');
@@ -74,95 +73,118 @@ export const AddAccountModal = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className={`w-full max-w-md p-6 rounded-2xl flex flex-col gap-4 border-0 shadow-2xl transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+        onClick={handleClose}
+      />
+
+      {/* Modal Card */}
+      <div className={`relative w-full max-w-md rounded-[16px] p-6 border shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-150 ${
+        isDark ? 'bg-[#171E19] border-[#2A352D] text-[#F1F5F2]' : 'bg-[#FFFFFF] border-[#E4E8E3] text-[#1D2822]'
+      }`}>
         {/* Header */}
-        <div className="flex justify-between items-center border-b pb-3 border-slate-800/10">
+        <div className="flex items-center justify-between pb-3 border-b border-[#E4E8E3]/20 mb-4">
           <div className="flex items-center gap-2">
-            <div className={`p-2 rounded-xl ${style('neu-inset-dark text-[#5EEAD4]', 'neu-inset-light text-[#0F766E]')}`}>
+            <div className={`p-2 rounded-[8px] ${
+              isDark ? 'bg-[#1C251F] text-[#7FC39A]' : 'bg-[#F1F8F4] text-[#3F8F5E]'
+            }`}>
               <Landmark className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold">
-                Add Bank Account
-              </h3>
-              <span className="text-xs text-slate-400 font-normal">
-                Register a new savings, current or loan account
-              </span>
+              <h3 className="text-sm font-bold tracking-tight">Add Bank Account</h3>
+              <p className="text-[11px] text-[#8B978F]">Register a new savings, current or loan facility</p>
             </div>
           </div>
 
-          <button 
-            type="button" 
+          <button
+            type="button"
             onClick={handleClose}
-            className="text-slate-400 hover:text-slate-200 p-1.5 rounded-xl border-0 bg-transparent cursor-pointer transition-colors"
+            className="p-1 text-[#8B978F] hover:text-foreground border-0 bg-transparent cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Error message */}
+        {/* Error Alert */}
         {error && (
-          <div className="p-3 rounded-xl bg-red-950/20 text-red-400 text-xs border border-red-500/20">
+          <div className="mb-4 p-2.5 rounded-[8px] text-xs bg-[#FBEAEA] text-[#C85C5C] font-semibold">
             {error}
           </div>
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          
-          <Input
-            label="Account Display Name"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="e.g. HDFC Salary Savings"
-            required
-          />
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <div>
+            <label className="font-semibold block mb-1">Account Display Name</label>
+            <input
+              type="text"
+              placeholder="e.g. SBI Salary Account"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className={`w-full px-3 py-2 text-xs rounded-[10px] border outline-none ${
+                isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+              }`}
+            />
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Select
-              label="Bank / Financial Institution"
+          <div>
+            <label className="font-semibold block mb-1">Financial Institution</label>
+            <select
               value={bankId}
-              onChange={e => setBankId(e.target.value)}
-              required
+              onChange={(e) => setBankId(e.target.value)}
+              className={`w-full px-3 py-2 text-xs rounded-[10px] border outline-none cursor-pointer ${
+                isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+              }`}
             >
               {banks.map(b => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
-            </Select>
-
-            <Select
-              label="Account Subtype"
-              value={accountType}
-              onChange={e => setAccountType(e.target.value)}
-            >
-              <option value="Savings">Savings Account</option>
-              <option value="Current">Current Account</option>
-              <option value="Loan">Loan / Overdraft</option>
-            </Select>
+            </select>
           </div>
 
-          <Input
-            label="Starting Balance (₹)"
-            type="number"
-            step="0.01"
-            value={balance}
-            onChange={e => setBalance(e.target.value)}
-            placeholder="0.00"
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-semibold block mb-1">Account Type</label>
+              <select
+                value={accountType}
+                onChange={(e) => setAccountType(e.target.value)}
+                className={`w-full px-3 py-2 text-xs rounded-[10px] border outline-none cursor-pointer ${
+                  isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                }`}
+              >
+                <option value="Savings">Savings</option>
+                <option value="Current">Current</option>
+                <option value="Salary">Salary</option>
+                <option value="Fixed Deposit">Fixed Deposit</option>
+                <option value="Loan">Loan</option>
+              </select>
+            </div>
 
-          <div className="flex items-center justify-end gap-3 mt-2 pt-3 border-t border-slate-800/10">
-            <Button type="button" variant="secondary" onClick={handleClose} disabled={loading}>
+            <div>
+              <label className="font-semibold block mb-1">Current Balance (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={balance}
+                onChange={(e) => setBalance(e.target.value)}
+                className={`w-full px-3 py-2 text-xs rounded-[10px] border outline-none ${
+                  isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                }`}
+              />
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-[#E4E8E3]/20 flex items-center justify-end gap-2">
+            <Button variant="secondary" size="sm" onClick={handleClose}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" loading={loading} icon={PlusCircle}>
+            <Button type="submit" variant="primary" size="sm" loading={loading}>
               Create Account
             </Button>
           </div>
-
         </form>
-
       </div>
     </div>
   );

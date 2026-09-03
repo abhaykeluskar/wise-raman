@@ -2,7 +2,9 @@ import React from 'react';
 import { useTheme } from '../../context/ThemeContext';
 
 export const TimeframePills = ({ activeTimeframe = '1m', onSelect }) => {
-  const { style } = useTheme();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const timeframes = [
     { key: '1w', label: '1w' },
     { key: '1m', label: '1m' },
@@ -11,7 +13,9 @@ export const TimeframePills = ({ activeTimeframe = '1m', onSelect }) => {
   ];
 
   return (
-    <div className={`inline-flex items-center p-1 rounded-xl gap-1 border-0 ${style('neu-inset-dark', 'neu-inset-light')}`}>
+    <div className={`inline-flex items-center p-0.5 rounded-[8px] border gap-0.5 ${
+      isDark ? 'bg-white/5 border-[#2A352D]' : 'bg-black/5 border-[#E4E8E3]'
+    }`}>
       {timeframes.map(tf => {
         const isActive = activeTimeframe === tf.key;
         return (
@@ -19,15 +23,10 @@ export const TimeframePills = ({ activeTimeframe = '1m', onSelect }) => {
             key={tf.key}
             type="button"
             onClick={() => onSelect(tf.key)}
-            className={`px-3 py-1 text-xxs font-bold rounded-lg transition-all border-0 cursor-pointer ${
+            className={`px-2.5 py-1 text-xs font-semibold rounded-[6px] transition-all border-0 cursor-pointer ${
               isActive
-                ? style(
-                    'neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]',
-                    'bg-[#5EEAD4] text-[#0A0E14]',
-                    'neu-flat-light text-[#0F766E]',
-                    'bg-[#0F766E] text-white'
-                  )
-                : style('text-slate-400 hover:text-slate-200', 'text-slate-600 hover:text-slate-900')
+                ? 'bg-[#3F8F5E] text-white shadow-xs'
+                : isDark ? 'text-[#8B978F] hover:text-[#F1F5F2]' : 'text-[#7B877F] hover:text-[#1D2822]'
             }`}
           >
             {tf.label}

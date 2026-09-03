@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
   useEffect(() => {
     localStorage.setItem('theme', theme);
@@ -16,18 +16,17 @@ export const ThemeProvider = ({ children }) => {
     document.body.classList.toggle('dark', isDark);
     document.body.classList.toggle('light', !isDark);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isDark ? '#0E1117' : '#F4F7F9');
+    if (meta) meta.setAttribute('content', isDark ? '#111713' : '#F7F8F5');
   }, [theme]);
 
-  // Neumorphic style resolver based on active theme
+  // Style resolver: seamlessly handles both legacy calls and clean minimalist classes
   const style = (neuDark, minDark, neuLight, minLight) => {
     if (theme === 'dark') {
-      return neuDark;
+      return minDark || neuDark;
     } else {
-      if (minLight === undefined && neuLight === undefined && minDark !== undefined) {
-        return minDark;
-      }
-      return neuLight || neuDark;
+      if (minLight !== undefined) return minLight;
+      if (neuLight !== undefined) return neuLight;
+      return minDark || neuDark;
     }
   };
 

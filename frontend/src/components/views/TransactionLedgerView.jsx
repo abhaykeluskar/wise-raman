@@ -2,694 +2,585 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { useToast } from '../../context/ToastContext';
-import { formatCurrency, formatDate, toLocalDateKey } from '../../utils/formatters';
-import { isInternalFlow, matchesPaymentRail } from '../../utils/analytics';
+import { formatCurrency, formatDate } from '../../utils/formatters';
+import { SearchField } from '../molecules/SearchField';
+import { FilterChip } from '../molecules/FilterChip';
 import { Badge } from '../atoms/Badge';
 import { Button } from '../atoms/Button';
+import { TransactionDetailDrawer } from '../organisms/TransactionDetailDrawer';
 import { 
-  ListFilter, 
-  Search, 
-  Pencil, 
-  Trash2, 
-  Check, 
-  X, 
-  Lock,
-  Sparkles, 
-  TrendingDown, 
+  Download, 
+  Upload, 
+  Filter, 
   CheckCircle2, 
-  Landmark,
+  ChevronLeft, 
+  ChevronRight, 
+  ArrowUpRight, 
+  ArrowDownLeft, 
   FileSpreadsheet,
-  ChevronLeft,
-  ChevronRight
+  Calendar,
+  Layers,
+  RotateCcw,
+  Trash2
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  CartesianGrid 
-} from 'recharts';
 
-export const TransactionLedgerView = () => {
-  const { theme, style } = useTheme();
-  const { transactions, accounts, banks, categories, fetchData, setTransactions, ledgerFocus, clearLedgerFocus , authFetch} = useFinance();
+export const TransactionLedgerView = ({ onOpenUploadModal, onViewSource }) => {
+  const { theme } = useTheme();
+  const { transactions, accounts, categories, ledgerFocus, clearLedgerFocus, authFetch, fetchData } = useFinance();
+  const { confirm, toast } = useToast();
+  const isDark = theme === 'dark';
 
-  const [selectedBankId, setSelectedBankId] = useState('ALL');
-  const [selectedAccountFilter, setSelectedAccountFilter] = useState('ALL');
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
+  // Filters state
   const [searchQuery, setSearchQuery] = useState('');
-
+  const [selectedAccount, setSelectedAccount] = useState('ALL');
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [selectedRail, setSelectedRail] = useState('ALL');
+  const [flowFilter, setFlowFilter] = useState('ALL'); // 'ALL' | 'INCOME' | 'EXPENSE' | 'TRANSFER'
   const [selectedMonth, setSelectedMonth] = useState('ALL');
-  const [flowFilter, setFlowFilter] = useState('ALL');
   const [selectedDate, setSelectedDate] = useState('');
-  const [railFilter, setRailFilter] = useState('ALL');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 25;
 
+  // Selected transaction for slide-over detail drawer
+  const [activeTxForDrawer, setActiveTxForDrawer] = useState(null);
+
+  // Sync ledger focus from deep links
   useEffect(() => {
     if (!ledgerFocus?.ts) return;
-    setSelectedMonth(ledgerFocus.month || 'ALL');
-    setSelectedCategoryFilter(ledgerFocus.category || 'ALL');
-    setSearchQuery(ledgerFocus.search || '');
-    setFlowFilter(ledgerFocus.flow || 'ALL');
-    setSelectedDate(ledgerFocus.date || '');
-    setRailFilter(ledgerFocus.rail || 'ALL');
-    setSelectedBankId('ALL');
-    setSelectedAccountFilter('ALL');
+    if (ledgerFocus.search) setSearchQuery(ledgerFocus.search);
+    if (ledgerFocus.category) setSelectedCategory(ledgerFocus.category);
+    if (ledgerFocus.account) setSelectedAccount(ledgerFocus.account);
+    if (ledgerFocus.flow) setFlowFilter(ledgerFocus.flow);
   }, [ledgerFocus]);
 
-  // Only show banks that have at least one account registered
-  const activeBanks = useMemo(() => {
-    return banks.filter(b => accounts.some(a => a.bank_id === b.id));
-  }, [banks, accounts]);
-
-  // Filter accounts based on selected bank tab
-  const availableAccounts = useMemo(() => {
-    if (selectedBankId === 'ALL') return accounts;
-    return accounts.filter(a => a.bank_id === selectedBankId);
-  }, [accounts, selectedBankId]);
-
-  // Available Months for dropdown
+  // Unique months from transactions
   const availableMonths = useMemo(() => {
-    const months = new Set();
-    transactions.forEach(tx => {
-      if (tx.date) {
-        // Format: YYYY-MM
-        months.add(tx.date.substring(0, 7));
+    const s = new Set();
+    transactions.forEach(t => {
+      if (t.date && t.date.length >= 7) {
+        s.add(t.date.substring(0, 7));
       }
     });
-    return Array.from(months).sort().reverse();
+    return Array.from(s).sort().reverse();
   }, [transactions]);
 
-  // Inline editing state
-  const [editingTxId, setEditingTxId] = useState(null);
-  const [editDate, setEditDate] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editAmount, setEditAmount] = useState('');
-  const [editCategory, setEditCategory] = useState('');
-
-  // Filtered transactions
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(tx => {
-      // 1. Bank tab filter
-      if (selectedBankId !== 'ALL') {
-        const acc = accounts.find(a => String(a.id) === String(tx.account_id));
-        if (!acc || String(acc.bank_id) !== String(selectedBankId)) return false;
-      }
-
-      // 2. Account dropdown filter
-      if (selectedAccountFilter !== 'ALL' && String(tx.account_id) !== String(selectedAccountFilter)) {
-        return false;
-      }
-
-      // 3. Category dropdown filter
-      if (selectedCategoryFilter !== 'ALL' && tx.category !== selectedCategoryFilter) {
-        return false;
-      }
-      
-      // 4. Month filter
-      if (selectedMonth !== 'ALL' && tx.date) {
-        if (!tx.date.startsWith(selectedMonth)) return false;
-      }
-
-      // 5. Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const descMatch = tx.description?.toLowerCase().includes(q);
-        const catMatch = tx.category?.toLowerCase().includes(q);
-        const subMatch = tx.subcategory?.toLowerCase().includes(q);
-        if (!descMatch && !catMatch && !subMatch) return false;
-      }
-
-      if (selectedDate) {
-        if (toLocalDateKey(tx.date) !== selectedDate) return false;
-      }
-
-      const amt = parseFloat(tx.amount);
-      const internal = isInternalFlow(tx);
-      if (flowFilter === 'OUTFLOW' && !(amt < 0 && !internal)) return false;
-      if (flowFilter === 'INFLOW' && !(amt > 0 && !internal)) return false;
-      if (flowFilter === 'TRANSFERS' && !internal) return false;
-
-      if (!matchesPaymentRail(tx, accounts, railFilter)) return false;
-
-      return true;
+  // Unique rails
+  const availableRails = useMemo(() => {
+    const s = new Set();
+    transactions.forEach(t => {
+      if (t.payment_rail) s.add(t.payment_rail);
     });
-  }, [transactions, accounts, selectedBankId, selectedAccountFilter, selectedCategoryFilter, selectedMonth, searchQuery, selectedDate, flowFilter, railFilter]);
+    return Array.from(s);
+  }, [transactions]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
-  const pagedTransactions = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredTransactions.slice(start, start + PAGE_SIZE);
-  }, [filteredTransactions, page]);
+  const hasActiveFilters = searchQuery !== '' || selectedAccount !== 'ALL' || selectedCategory !== 'ALL' || selectedRail !== 'ALL' || flowFilter !== 'ALL' || selectedMonth !== 'ALL' || selectedDate !== '';
 
-  useEffect(() => {
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setSelectedAccount('ALL');
+    setSelectedCategory('ALL');
+    setSelectedRail('ALL');
+    setFlowFilter('ALL');
+    setSelectedMonth('ALL');
+    setSelectedDate('');
     setPage(1);
-  }, [selectedBankId, selectedAccountFilter, selectedCategoryFilter, selectedMonth, searchQuery, selectedDate, flowFilter, railFilter]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
-  // Bank-specific chart data
-  const bankChartData = useMemo(() => {
-    const grouped = {};
-    filteredTransactions.forEach(tx => {
-      if (!tx.date || tx.amount >= 0) return;
-      const d = new Date(tx.date);
-      const key = d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
-      const ts = d.getTime();
-      
-      if (!grouped[key]) {
-        grouped[key] = { name: key, timestamp: ts, Spend: 0 };
-      }
-      grouped[key].Spend += Math.abs(parseFloat(tx.amount));
-    });
-    return Object.values(grouped).sort((a, b) => a.timestamp - b.timestamp).slice(-20);
-  }, [filteredTransactions]);
-
-  // Actions
-  const handleStartEdit = (tx) => {
-    setEditingTxId(tx.id);
-    const dateOnly = (tx.date || '').toString().split('T')[0];
-    setEditDate(dateOnly);
-    setEditDescription(tx.description || '');
-    setEditAmount((tx.amount || 0).toString());
-    setEditCategory(tx.category || 'Others');
+    clearLedgerFocus();
   };
 
-  const handleCancelEdit = () => {
-    setEditingTxId(null);
-  };
-
-  const handleSaveEdit = async (txId) => {
-    try {
-      const res = await authFetch(`/api/transactions/${txId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: editDate,
-          description: editDescription,
-          amount: parseFloat(editAmount) || 0,
-          category: editCategory,
-          verified: true
-        })
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setTransactions(prev => prev.map(t => t.id === txId ? updated : t));
-        setEditingTxId(null);
-        fetchData();
-      }
-    } catch (err) {
-      console.error("Error saving manual edit:", err);
-    }
-  };
-
-  const { toast, confirm } = useToast();
-
-  const handleDeleteTransaction = async (txId) => {
-    const isConfirmed = await confirm({
+  // Delete transaction handler
+  const handleDeleteTx = async (txId, e) => {
+    e?.stopPropagation();
+    const ok = await confirm({
       title: 'Delete Transaction',
-      message: 'Are you sure you want to delete this transaction from the ledger?',
-      confirmText: 'Delete',
+      message: 'Are you sure you want to delete this transaction permanently? This will adjust your current account balance accordingly.',
+      confirmText: 'Delete Transaction',
       isDanger: true
     });
-
-    if (!isConfirmed) return;
+    if (!ok) return;
 
     try {
       const res = await authFetch(`/api/transactions/${txId}`, { method: 'DELETE' });
       if (res.ok) {
-        setTransactions(prev => prev.filter(t => t.id !== txId));
+        await fetchData();
         toast.success('Transaction deleted.');
-        fetchData();
-      } else {
-        const err = await res.json();
-        toast.error(err.detail || 'Failed to delete transaction.', 'Delete Error');
       }
     } catch (err) {
-      console.error("Error deleting transaction:", err);
-      toast.error('Connection error while deleting transaction.', 'Error');
+      console.error('Failed to delete transaction:', err);
     }
   };
 
-  const handleVerify = async (txId, category) => {
-    try {
-      const res = await authFetch(`/api/transactions/${txId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, verified: true })
-      });
-      if (res.ok) {
-        setTransactions(prev => prev.map(t => t.id === txId ? { ...t, verified: true } : t));
+  // Filtered transactions
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(tx => {
+      // Account filter
+      if (selectedAccount !== 'ALL' && String(tx.account_id) !== String(selectedAccount)) {
+        return false;
       }
-    } catch (err) {
-      console.error("Error verifying transaction:", err);
-    }
+
+      // Category filter
+      if (selectedCategory !== 'ALL' && tx.category !== selectedCategory) {
+        return false;
+      }
+
+      // Payment Rail filter
+      if (selectedRail !== 'ALL' && tx.payment_rail !== selectedRail) {
+        return false;
+      }
+
+      // Flow filter
+      const amt = parseFloat(tx.amount || 0);
+      const isIncome = tx.flow === 'INFLOW' || tx.type === 'CREDIT' || amt > 0;
+      const isTransfer = tx.category === 'Transfer' || tx.type === 'TRANSFER';
+
+      if (flowFilter === 'INCOME' && (!isIncome || isTransfer)) return false;
+      if (flowFilter === 'EXPENSE' && (isIncome || isTransfer)) return false;
+      if (flowFilter === 'TRANSFER' && !isTransfer) return false;
+
+      // Month filter
+      if (selectedMonth !== 'ALL' && tx.date && !tx.date.startsWith(selectedMonth)) {
+        return false;
+      }
+
+      // Date filter
+      if (selectedDate && tx.date && !tx.date.startsWith(selectedDate)) {
+        return false;
+      }
+
+      // Search Query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const desc = (tx.description || '').toLowerCase();
+        const merch = (tx.merchant || '').toLowerCase();
+        const ref = (tx.reference || '').toLowerCase();
+        const cat = (tx.category || '').toLowerCase();
+        if (!desc.includes(q) && !merch.includes(q) && !ref.includes(q) && !cat.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [transactions, selectedAccount, selectedCategory, selectedRail, flowFilter, selectedMonth, selectedDate, searchQuery]);
+
+  // Summary strip metrics
+  const summary = useMemo(() => {
+    let income = 0;
+    let expenses = 0;
+    let transfers = 0;
+
+    filteredTransactions.forEach(tx => {
+      const amt = Math.abs(parseFloat(tx.amount || 0));
+      const isIncome = tx.flow === 'INFLOW' || tx.type === 'CREDIT' || parseFloat(tx.amount || 0) > 0;
+      const isTransfer = tx.category === 'Transfer' || tx.type === 'TRANSFER';
+
+      if (isTransfer) {
+        transfers += amt;
+      } else if (isIncome) {
+        income += amt;
+      } else {
+        expenses += amt;
+      }
+    });
+
+    return { income, expenses, transfers };
+  }, [filteredTransactions]);
+
+  // Paginated records
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
+  const paginatedTransactions = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredTransactions.slice(start, start + PAGE_SIZE);
+  }, [filteredTransactions, page]);
+
+  // CSV Export handler
+  const handleExportCSV = () => {
+    if (filteredTransactions.length === 0) return;
+    const headers = ['Date', 'Merchant', 'Description', 'Category', 'Account', 'Payment Rail', 'Amount', 'Type'];
+    const rows = filteredTransactions.map(tx => [
+      tx.date || '',
+      `"${(tx.merchant || '').replace(/"/g, '""')}"`,
+      `"${(tx.description || '').replace(/"/g, '""')}"`,
+      tx.category || '',
+      tx.account_name || '',
+      tx.payment_rail || '',
+      tx.amount || 0,
+      tx.type || ''
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `wiseraman_transactions_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-300 pb-12">
+    <div className="space-y-6 animate-in fade-in duration-200 pb-12">
       
-      {/* Header Banner */}
-      <div className={`p-5 sm:p-6 rounded-3xl border-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <div className="flex items-center gap-3.5">
-          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')}`}>
-            <ListFilter className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-[#F4F7FA]', 'text-[#17202A]')}`}>
-                Transaction Ledger
-              </h1>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-[#5EEAD4]/15 text-[#5EEAD4] border border-[#5EEAD4]/20">
-                {filteredTransactions.length} Transactions
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">
-              Normalized ledger with UPI intelligence, merchant categorization, and audit trail
-            </p>
-          </div>
+      {/* 1. Header with metadata & Workspace Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#E4E8E3]/30">
+        <div>
+          <h2 className={`text-xl sm:text-2xl font-bold tracking-tight ${isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'}`}>
+            Transactions
+          </h2>
+          <p className={`text-xs mt-0.5 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+            {transactions.length.toLocaleString()} transactions across {accounts.length} connected accounts
+          </p>
         </div>
-      </div>
 
-      {/* 1. Horizontal Bank Navigation Tabs */}
-      <div className="flex items-center flex-wrap gap-2 max-w-full">
-        <button
-          type="button"
-          onClick={() => setSelectedBankId('ALL')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
-            selectedBankId === 'ALL'
-              ? style('neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]', 'bg-[#0F766E] text-white shadow-md')
-              : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
-          }`}
-        >
-          All Accounts Ledger
-        </button>
-
-        {activeBanks.map(b => {
-          const isSelected = selectedBankId === b.id;
-          return (
-            <button
-              key={b.id}
-              type="button"
-              onClick={() => setSelectedBankId(b.id)}
-              className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
-                isSelected
-                  ? style('neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]', 'bg-[#0F766E] text-white shadow-md')
-                  : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
-              }`}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleExportCSV}
+            icon={Download}
+          >
+            Export CSV
+          </Button>
+          {onOpenUploadModal && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={onOpenUploadModal}
+              icon={Upload}
             >
-              {b.name}
-            </button>
-          );
-        })}
+              Import Statement
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* 2. Contextual Spending Trend Chart for Selected Bank */}
-      {bankChartData.length > 0 && (
-        <div className={`p-6 rounded-3xl border-0 flex flex-col gap-3 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-          <div className="flex items-center gap-2">
-            <TrendingDown className={`h-4 w-4 ${style('text-rose-400', 'text-rose-600')}`} />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              {selectedBankId === 'ALL' ? 'Overall Recent Spend Velocity' : `${activeBanks.find(b => b.id === selectedBankId)?.name || 'Bank'} Spend Trend`}
-            </h3>
-          </div>
+      {/* 2. Search & Filter Bar */}
+      <div className="space-y-3">
+        <SearchField
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+          onClear={() => setSearchQuery('')}
+          placeholder="Search merchant, description, reference, category..."
+        />
 
-          <div className="w-full h-44">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={bankChartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="ledgerSpend" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={theme === 'dark' ? '#F87171' : '#DC2626'} stopOpacity={0.35}/>
-                    <stop offset="95%" stopColor={theme === 'dark' ? '#F87171' : '#DC2626'} stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#19202A' : '#E8EEF2'} />
-                <XAxis dataKey="name" stroke="#94A3B8" fontSize={9} tickLine={false} axisLine={false} />
-                <YAxis stroke="#94A3B8" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v >= 1000 ? (v/1000).toFixed(0) + 'k' : v}`} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: theme === 'dark' ? '#151A22' : '#FFFFFF',
-                    borderColor: theme === 'dark' ? '#27313D' : '#D8E0E7',
-                    color: theme === 'dark' ? '#F4F7FA' : '#17202A',
-                    borderRadius: '12px',
-                    fontSize: '11px'
-                  }}
-                  formatter={(v) => [`₹${v.toLocaleString()}`, "Spend"]}
-                />
-                <Area type="monotone" dataKey="Spend" stroke={theme === 'dark' ? '#F87171' : '#DC2626'} fill="url(#ledgerSpend)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* 3. Search & Filter Bar */}
-      {ledgerFocus?.ts && (
-        <div className={`px-4 py-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs font-semibold ${style('neu-inset-dark text-slate-300', 'neu-inset-light text-slate-700')}`}>
-          <span>
-            Filtered from Stats
-            {selectedMonth !== 'ALL' ? ` · ${selectedMonth}` : ''}
-            {selectedDate ? ` · ${selectedDate}` : ''}
-            {selectedCategoryFilter !== 'ALL' ? ` · ${selectedCategoryFilter}` : ''}
-            {flowFilter !== 'ALL' ? ` · ${flowFilter}` : ''}
-            {railFilter !== 'ALL' ? ` · ${railFilter}` : ''}
-            {searchQuery ? ` · “${searchQuery}”` : ''}
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedMonth('ALL');
-              setSelectedCategoryFilter('ALL');
-              setSearchQuery('');
-              setFlowFilter('ALL');
-              setSelectedDate('');
-              setRailFilter('ALL');
-              clearLedgerFocus();
-            }}
-            className="text-[#5EEAD4] border-0 bg-transparent cursor-pointer font-bold"
-          >
-            Clear
-          </button>
-        </div>
-      )}
-      <div className={`p-4 px-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 border-0 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <div className="relative w-full sm:w-72">
-          <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search merchant, category, ref..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className={`w-full rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
+        {/* Filter Chips row */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          {/* Flow Filters */}
+          <FilterChip
+            label="All Flows"
+            active={flowFilter === 'ALL'}
+            onClick={() => { setFlowFilter('ALL'); setPage(1); }}
           />
-        </div>
-
-        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
-          <select
-            value={flowFilter}
-            onChange={e => setFlowFilter(e.target.value)}
-            className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 cursor-pointer ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-          >
-            <option value="ALL">All flows</option>
-            <option value="OUTFLOW">Outflow</option>
-            <option value="INFLOW">Inflow</option>
-            <option value="TRANSFERS">Transfers</option>
-          </select>
-
-          {/* Account Filter */}
-          <select
-            value={selectedAccountFilter}
-            onChange={e => setSelectedAccountFilter(e.target.value)}
-            className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 cursor-pointer ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-          >
-            <option value="ALL">All Accounts</option>
-            {availableAccounts.map(a => (
-              <option key={a.id} value={a.id}>{a.name} ({a.subtype})</option>
-            ))}
-          </select>
-
-          {/* Category Filter */}
-          <select
-            value={selectedCategoryFilter}
-            onChange={e => setSelectedCategoryFilter(e.target.value)}
-            className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 cursor-pointer ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-          >
-            <option value="ALL">All Categories</option>
-            {categories.map(c => (
-              <option key={c.id} value={c.name}>{c.name}</option>
-            ))}
-          </select>
+          <FilterChip
+            label="Income"
+            active={flowFilter === 'INCOME'}
+            onClick={() => { setFlowFilter('INCOME'); setPage(1); }}
+          />
+          <FilterChip
+            label="Expenses"
+            active={flowFilter === 'EXPENSE'}
+            onClick={() => { setFlowFilter('EXPENSE'); setPage(1); }}
+          />
+          <FilterChip
+            label="Transfers"
+            active={flowFilter === 'TRANSFER'}
+            onClick={() => { setFlowFilter('TRANSFER'); setPage(1); }}
+          />
 
           {/* Month Filter */}
-          <select
-            value={selectedMonth}
-            onChange={e => setSelectedMonth(e.target.value)}
-            className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 cursor-pointer ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-          >
-            <option value="ALL">All Months</option>
-            {availableMonths.map(m => (
-              <option key={m} value={m}>{new Date(m + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</option>
-            ))}
-          </select>
+          {availableMonths.length > 0 && (
+            <select
+              value={selectedMonth}
+              onChange={(e) => { setSelectedMonth(e.target.value); setPage(1); }}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer outline-none ${
+                selectedMonth !== 'ALL'
+                  ? isDark ? 'bg-[rgba(91,174,120,0.2)] text-[#7FC39A] border-[#5BAE78]/50 font-semibold' : 'bg-[#E2F1E8] text-[#285A3A] border-[#A5D5B9] font-semibold'
+                  : isDark ? 'bg-[#171E19] text-[#C2CCC5] border-[#2A352D]' : 'bg-[#FFFFFF] text-[#4F5D55] border-[#E4E8E3]'
+              }`}
+            >
+              <option value="ALL">All Months</option>
+              {availableMonths.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Account Filter */}
+          {accounts.length > 0 && (
+            <select
+              value={selectedAccount}
+              onChange={(e) => { setSelectedAccount(e.target.value); setPage(1); }}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer outline-none ${
+                selectedAccount !== 'ALL'
+                  ? isDark ? 'bg-[rgba(91,174,120,0.2)] text-[#7FC39A] border-[#5BAE78]/50 font-semibold' : 'bg-[#E2F1E8] text-[#285A3A] border-[#A5D5B9] font-semibold'
+                  : isDark ? 'bg-[#171E19] text-[#C2CCC5] border-[#2A352D]' : 'bg-[#FFFFFF] text-[#4F5D55] border-[#E4E8E3]'
+              }`}
+            >
+              <option value="ALL">All Accounts</option>
+              {accounts.map(acc => (
+                <option key={acc.id} value={acc.id}>{acc.name}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Category Filter */}
+          {categories.length > 0 && (
+            <select
+              value={selectedCategory}
+              onChange={(e) => { setSelectedCategory(e.target.value); setPage(1); }}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer outline-none ${
+                selectedCategory !== 'ALL'
+                  ? isDark ? 'bg-[rgba(91,174,120,0.2)] text-[#7FC39A] border-[#5BAE78]/50 font-semibold' : 'bg-[#E2F1E8] text-[#285A3A] border-[#A5D5B9] font-semibold'
+                  : isDark ? 'bg-[#171E19] text-[#C2CCC5] border-[#2A352D]' : 'bg-[#FFFFFF] text-[#4F5D55] border-[#E4E8E3]'
+              }`}
+            >
+              <option value="ALL">All Categories</option>
+              {categories.map(c => (
+                <option key={c.id || c.name} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Payment Rail Filter */}
+          {availableRails.length > 0 && (
+            <select
+              value={selectedRail}
+              onChange={(e) => { setSelectedRail(e.target.value); setPage(1); }}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer outline-none ${
+                selectedRail !== 'ALL'
+                  ? isDark ? 'bg-[rgba(91,174,120,0.2)] text-[#7FC39A] border-[#5BAE78]/50 font-semibold' : 'bg-[#E2F1E8] text-[#285A3A] border-[#A5D5B9] font-semibold'
+                  : isDark ? 'bg-[#171E19] text-[#C2CCC5] border-[#2A352D]' : 'bg-[#FFFFFF] text-[#4F5D55] border-[#E4E8E3]'
+              }`}
+            >
+              <option value="ALL">All Payment Rails</option>
+              {availableRails.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Date Picker Input */}
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => { setSelectedDate(e.target.value); setPage(1); }}
+            className={`px-2.5 py-1 rounded-full text-xs border outline-none cursor-pointer ${
+              selectedDate
+                ? isDark ? 'bg-[rgba(91,174,120,0.2)] text-[#7FC39A] border-[#5BAE78]/50 font-semibold' : 'bg-[#E2F1E8] text-[#285A3A] border-[#A5D5B9] font-semibold'
+                : isDark ? 'bg-[#171E19] text-[#C2CCC5] border-[#2A352D]' : 'bg-[#FFFFFF] text-[#4F5D55] border-[#E4E8E3]'
+            }`}
+          />
+
+          {/* Reset Filters Chip */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold text-[#C85C5C] bg-[#FBEAEA]/30 hover:bg-[#FBEAEA]/60 border border-[#C85C5C]/30 cursor-pointer"
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>Reset Filters</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 4. Transactions Data Table */}
-      <div className={`p-6 rounded-2xl border-0 flex flex-col gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Transactions Log ({filteredTransactions.length})
-          </h4>
-          {filteredTransactions.length > 0 && (
-            <span className="text-[10px] font-semibold text-slate-500">
-              Page {page} of {totalPages} · {PAGE_SIZE} per page
+      {/* 3. Summary Strip (Section 13) */}
+      <div className={`px-5 py-3 rounded-[12px] border flex flex-wrap items-center justify-between gap-4 text-xs ${
+        isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+      }`}>
+        <span className={`font-semibold ${isDark ? 'text-[#C2CCC5]' : 'text-[#4F5D55]'}`}>
+          Showing {filteredTransactions.length} of {transactions.length} transactions
+        </span>
+
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#8B978F]">Income:</span>
+            <span className="font-semibold text-[#3F8F5E] tabular-nums">
+              +{formatCurrency(summary.income)}
             </span>
-          )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#8B978F]">Expenses:</span>
+            <span className={`font-semibold tabular-nums ${isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'}`}>
+              -{formatCurrency(summary.expenses)}
+            </span>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-1.5">
+            <span className="text-[#8B978F]">Transfers:</span>
+            <span className="font-semibold text-[#A77B58] tabular-nums">
+              {formatCurrency(summary.transfers)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Transaction Table */}
+      <div className={`rounded-[16px] border overflow-hidden ${
+        isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
+      }`}>
+        {/* Table Header */}
+        <div className={`hidden sm:grid grid-cols-12 gap-4 px-4 py-3 border-b text-[11px] font-bold uppercase tracking-wider ${
+          isDark ? 'bg-[#1C251F] border-[#2A352D] text-[#8B978F]' : 'bg-[#FBFCFA] border-[#E4E8E3] text-[#7B877F]'
+        }`}>
+          <div className="col-span-2">Date</div>
+          <div className="col-span-4">Description / Merchant</div>
+          <div className="col-span-2">Category</div>
+          <div className="col-span-2">Account / Rail</div>
+          <div className="col-span-2 text-right">Amount / Actions</div>
         </div>
 
-        {filteredTransactions.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-500 italic">
-            No matching transactions found. Try adjusting your filters or importing a statement.
-          </div>
-        ) : (
-          <> <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className={`border-b ${style('border-slate-800/80 text-slate-400', 'border-slate-200 text-slate-600')}`}>
-                  <th className="py-3 px-4 font-semibold">Date</th>
-                  <th className="py-3 px-4 font-semibold">Description / Merchant</th>
-                  <th className="py-3 px-4 font-semibold">Account</th>
-                  <th className="py-3 px-4 font-semibold">Category</th>
-                  <th className="py-3 px-4 font-semibold text-right">Amount</th>
-                  <th className="py-3 px-4 font-semibold text-center">Status</th>
-                  <th className="py-3 px-4 font-semibold text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/40">
-                {pagedTransactions.map(tx => {
-                  const isEditing = editingTxId === tx.id;
-                  const amt = parseFloat(tx.amount);
-                  const isIncome = amt > 0;
-                  const acc = accounts.find(a => a.id === tx.account_id);
-
-                  if (isEditing) {
-                    return (
-                      <tr key={tx.id} className={style('bg-slate-800/50', 'bg-slate-100')}>
-                        <td className="py-2.5 px-3 flex items-center gap-1 text-slate-400">
-                          <Lock className="h-3 w-3 text-slate-500" title="Immutable Financial Truth" />
-                          <input
-                            type="date"
-                            value={editDate}
-                            readOnly
-                            disabled
-                            className="rounded-lg px-2 py-1 text-xs border-0 bg-slate-900/50 text-slate-400 cursor-not-allowed"
-                          />
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <input
-                            type="text"
-                            value={editDescription}
-                            onChange={e => setEditDescription(e.target.value)}
-                            className="w-full rounded-lg px-2 py-1 text-xs border-0 bg-slate-900 text-white"
-                          />
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-400 text-xxs">
-                          {acc?.name || 'Account'}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <select
-                            value={editCategory}
-                            onChange={e => setEditCategory(e.target.value)}
-                            className="rounded-lg px-2 py-1 text-xs border-0 bg-slate-900 text-white"
-                          >
-                            {categories.map(c => (
-                              <option key={c.id} value={c.name}>{c.name}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="py-2.5 px-3 flex items-center gap-1 justify-end text-slate-400">
-                          <Lock className="h-3 w-3 text-slate-500" title="Immutable Financial Truth" />
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editAmount}
-                            readOnly
-                            disabled
-                            className="w-24 rounded-lg px-2 py-1 text-xs border-0 bg-slate-900/50 text-slate-400 text-right cursor-not-allowed"
-                          />
-                        </td>
-                        <td className="py-2.5 px-3 text-center" colSpan={2}>
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => handleSaveEdit(tx.id)}
-                              className="p-1 rounded bg-emerald-600 text-white border-0 cursor-pointer"
-                              title="Save"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={handleCancelEdit}
-                              className="p-1 rounded bg-slate-700 text-white border-0 cursor-pointer"
-                              title="Cancel"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
-
-                  return (
-                    <tr key={tx.id} className={`transition-colors ${style('hover:bg-slate-800/30', 'hover:bg-slate-50')}`}>
-                      <td className="py-3 px-4 whitespace-nowrap text-slate-400">
-                        {formatDate(tx.date, 'short')}
-                      </td>
-                      <td className="py-3 px-4 max-w-xs truncate font-medium" title={tx.description}>
-                        {tx.description}
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap text-slate-400 text-xxs">
-                        {acc?.name || 'Bank Account'}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${style('bg-slate-800/40 text-slate-300', 'bg-slate-200 text-slate-700')}`}>
-                          {tx.category || 'Others'}
-                        </span>
-                      </td>
-                      <td className={`py-3 px-4 text-right font-extrabold whitespace-nowrap ${isIncome ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {isIncome ? `+${formatCurrency(amt)}` : `-${formatCurrency(Math.abs(amt))}`}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        {tx.verified ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-semibold" title="AI / Rule Verified">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => handleVerify(tx.id, tx.category)}
-                            className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-emerald-400 border-0 bg-transparent cursor-pointer transition-colors"
-                            title="Click to Verify"
-                          >
-                            <Sparkles className="h-3 w-3" />
-                            Verify
-                          </button>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleStartEdit(tx)}
-                            className="p-1 text-slate-400 hover:text-slate-200 border-0 bg-transparent cursor-pointer transition-colors"
-                            title="Edit Transaction"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTransaction(tx.id)}
-                            className="p-1 text-slate-400 hover:text-red-400 border-0 bg-transparent cursor-pointer transition-colors"
-                            title="Delete Transaction"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="md:hidden flex flex-col gap-3">
-            {pagedTransactions.map(tx => {
-              const isEditing = editingTxId === tx.id;
-              const amt = parseFloat(tx.amount);
-              const isIncome = amt > 0;
-              const acc = accounts.find(a => a.id === tx.account_id);
-
-              if (isEditing) {
-                return (
-                  <div key={tx.id} className={`p-4 rounded-xl flex flex-col gap-3 ${style('bg-slate-800/50', 'bg-slate-100')}`}>
-                    <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border-0 bg-slate-900 text-white" />
-                    <input type="text" value={editDescription} onChange={e => setEditDescription(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border-0 bg-slate-900 text-white" placeholder="Description" />
-                    <select value={editCategory} onChange={e => setEditCategory(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border-0 bg-slate-900 text-white">
-                      {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                    </select>
-                    <input type="number" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border-0 bg-slate-900 text-white text-right" placeholder="Amount" />
-                    <div className="flex gap-2 justify-end mt-2">
-                      <button onClick={() => handleSaveEdit(tx.id)} className="flex-1 p-2 rounded-lg bg-emerald-600 text-white font-bold flex justify-center items-center gap-2 border-0">
-                        <Check className="h-4 w-4" /> Save
-                      </button>
-                      <button onClick={handleCancelEdit} className="flex-1 p-2 rounded-lg bg-slate-700 text-white font-bold flex justify-center items-center gap-2 border-0">
-                        <X className="h-4 w-4" /> Cancel
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <div key={tx.id} className={`p-4 rounded-xl flex flex-col gap-2 ${style('bg-slate-800/30', 'bg-slate-50')}`}>
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="flex flex-col min-w-0">
-                      <span className={`font-bold text-sm truncate ${style('text-slate-100', 'text-slate-800')}`} title={tx.description}>{tx.description}</span>
-                      <span className="text-xs text-slate-400">{formatDate(tx.date, 'short')} &bull; {acc?.name || 'Bank Account'}</span>
-                    </div>
-                    <span className={`font-extrabold text-sm whitespace-nowrap shrink-0 ${isIncome ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {isIncome ? `+${formatCurrency(amt)}` : `-${formatCurrency(Math.abs(amt))}`}
+        {/* Rows */}
+        {paginatedTransactions.length > 0 ? (
+          <div className="divide-y divide-[#E4E8E3]/20">
+            {paginatedTransactions.map((tx) => (
+              <div
+                key={tx.id}
+                onClick={() => setActiveTxForDrawer(tx)}
+                className={`group px-4 py-3 transition-colors duration-150 cursor-pointer ${
+                  isDark ? 'hover:bg-[#1C251F]' : 'hover:bg-[#F1F8F4]/40'
+                }`}
+              >
+                {/* Desktop Grid Layout */}
+                <div className="hidden sm:grid grid-cols-12 gap-4 items-center text-xs">
+                  {/* Date */}
+                  <div className="col-span-2 text-xs font-medium">
+                    <span className={isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'}>
+                      {tx.date ? formatDate(tx.date) : '—'}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className={`px-2 py-1 rounded text-[10px] font-semibold ${style('bg-slate-800/60 text-slate-300', 'bg-slate-200 text-slate-700')}`}>
-                      {tx.category || 'Others'}
-                    </span>
-                    <div className="flex gap-3 items-center">
-                      {tx.verified ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-semibold"><CheckCircle2 className="h-3 w-3" /></span>
-                      ) : (
-                        <button onClick={() => handleVerify(tx.id, tx.category)} className="text-[10px] text-slate-400 border-0 bg-transparent flex items-center gap-1"><Sparkles className="h-3 w-3" /></button>
+
+                  {/* Description / Merchant */}
+                  <div className="col-span-4 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`font-semibold truncate ${
+                        isDark ? 'text-[#F1F5F2] group-hover:text-[#7FC39A]' : 'text-[#1D2822] group-hover:text-[#3F8F5E]'
+                      }`}>
+                        {tx.merchant || tx.description || 'Unknown'}
+                      </span>
+                      {tx.verified && (
+                        <CheckCircle2 className="h-3 w-3 text-[#3F8F5E] shrink-0" title="Verified" />
                       )}
-                      <button onClick={() => handleStartEdit(tx)} className="text-slate-400 border-0 bg-transparent"><Pencil className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => handleDeleteTransaction(tx.id)} className="text-slate-400 hover:text-red-400 border-0 bg-transparent"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
+                    {tx.merchant && tx.description && tx.merchant !== tx.description && (
+                      <span className="text-[11px] text-[#8B978F] truncate block">
+                        {tx.description}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Category */}
+                  <div className="col-span-2">
+                    <Badge variant={tx.category === 'Transfer' ? 'neutral' : 'brown'} size="xs">
+                      {tx.category || 'General'}
+                    </Badge>
+                  </div>
+
+                  {/* Account / Rail */}
+                  <div className="col-span-2 text-[11px]">
+                    <div className="font-medium truncate">{tx.account_name || 'Account'}</div>
+                    <div className="text-[10px] font-mono text-[#8B978F]">{tx.payment_rail || 'OTHER'}</div>
+                  </div>
+
+                  {/* Amount / Action */}
+                  <div className="col-span-2 flex items-center justify-end gap-2">
+                    <div className={`tabular-nums font-semibold ${
+                      tx.category === 'Transfer' || tx.type === 'TRANSFER'
+                        ? isDark ? 'text-[#C2CCC5]' : 'text-[#4F5D55]'
+                        : tx.flow === 'INFLOW' || tx.type === 'CREDIT' || parseFloat(tx.amount || 0) > 0
+                          ? 'text-[#3F8F5E]'
+                          : isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'
+                    }`}>
+                      {tx.category === 'Transfer' ? '' : (tx.flow === 'INFLOW' || tx.type === 'CREDIT' || parseFloat(tx.amount || 0) > 0) ? '+' : '-'}
+                      {formatCurrency(Math.abs(parseFloat(tx.amount || 0)))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteTx(tx.id, e)}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-[#8B978F] hover:text-[#C85C5C] transition-opacity cursor-pointer border-0 bg-transparent"
+                      title="Delete transaction"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
-              );
-            })}
+
+                {/* Mobile Card Layout */}
+                <div className="sm:hidden flex items-center justify-between">
+                  <div className="min-w-0 pr-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-xs truncate">
+                        {tx.merchant || tx.description}
+                      </span>
+                      {tx.verified && <CheckCircle2 className="h-3 w-3 text-[#3F8F5E]" />}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] text-[#8B978F] mt-0.5">
+                      <span>{tx.date ? formatDate(tx.date) : ''}</span>
+                      <span>·</span>
+                      <span>{tx.category || 'General'}</span>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <span className={`tabular-nums text-xs font-semibold ${
+                      parseFloat(tx.amount || 0) > 0 ? 'text-[#3F8F5E]' : ''
+                    }`}>
+                      {parseFloat(tx.amount || 0) > 0 ? '+' : '-'}
+                      {formatCurrency(Math.abs(parseFloat(tx.amount || 0)))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <button
-                type="button"
-                disabled={page <= 1}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                className={`inline-flex items-center gap-1 min-h-10 px-3 rounded-xl text-xs font-bold border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${style('neu-btn-dark text-slate-300', 'neu-btn-light text-slate-700')}`}
-              >
-                <ChevronLeft className="h-4 w-4" /> Prev
-              </button>
-              <span className="text-xs font-semibold text-slate-400">
-                {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, filteredTransactions.length)} of {filteredTransactions.length}
-              </span>
-              <button
-                type="button"
-                disabled={page >= totalPages}
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                className={`inline-flex items-center gap-1 min-h-10 px-3 rounded-xl text-xs font-bold border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${style('neu-btn-dark text-slate-300', 'neu-btn-light text-slate-700')}`}
-              >
-                Next <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-
-        </>
+        ) : (
+          <div className="p-12 text-center">
+            <h4 className="text-sm font-bold">Nothing here yet</h4>
+            <p className={`text-xs mt-1 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+              No transactions match your current search or filter criteria.
+            </p>
+          </div>
         )}
+
+        {/* Pagination Controls */}
+        <div className={`p-4 border-t flex items-center justify-between gap-4 text-xs ${
+          isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+        }`}>
+          <span className={isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}>
+            Page {page} of {totalPages} ({filteredTransactions.length} records)
+          </span>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="xs"
+              disabled={page <= 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              icon={ChevronLeft}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              size="xs"
+              disabled={page >= totalPages}
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              icon={ChevronRight}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       </div>
+
+      {/* 5. Slide-over Transaction Detail Drawer */}
+      <TransactionDetailDrawer
+        transaction={activeTxForDrawer}
+        isOpen={!!activeTxForDrawer}
+        onClose={() => setActiveTxForDrawer(null)}
+        onViewSource={onViewSource}
+      />
 
     </div>
   );

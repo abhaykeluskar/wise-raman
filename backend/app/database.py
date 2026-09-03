@@ -23,6 +23,7 @@ def init_db():
         
         # Safe idempotent column additions
         try:
+            conn.execute(text("ALTER TYPE transaction_type_enum ADD VALUE IF NOT EXISTS 'UNKNOWN_NEEDS_REVIEW';"))
             conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fingerprint VARCHAR(64);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_transactions_fingerprint ON transactions (fingerprint);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_transactions_account_fingerprint ON transactions (account_id, fingerprint);"))

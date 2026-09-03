@@ -1,5 +1,6 @@
 import uuid
 import enum
+from decimal import Decimal
 from sqlalchemy import Column, String, Date, Boolean, ForeignKey, Numeric, Text, Enum as SQLEnum, DateTime, Integer
 from sqlalchemy.orm import relationship, synonym
 from sqlalchemy.sql import func
@@ -208,13 +209,33 @@ class CreditCard(Base):
     bank_id = Column(UUID(as_uuid=True), ForeignKey("banks.id", ondelete="CASCADE"), nullable=False)
     card_name = Column(String, nullable=False)
     network = Column(String, nullable=False)  # Visa, Mastercard, RuPay, Amex
-    reward_currency = Column(String, nullable=False)  # Cashback, Reward Points, Miles
+    reward_currency = Column(String, nullable=False, default="Reward Points")  # Cashback, Reward Points, Miles
     monthly_cap = Column(Numeric(14, 2), nullable=True)
     statement_date = Column(Integer, default=1)
     is_active = Column(Boolean, default=True)
 
     account = relationship("Account")
     bank = relationship("Bank", back_populates="credit_cards")
+
+    @property
+    def credit_limit(self):
+        return self.account.credit_limit if self.account else None
+
+    @property
+    def balance(self):
+        return self.account.balance if self.account else Decimal("0.00")
+
+    @property
+    def current_balance(self):
+        return self.account.balance if self.account else Decimal("0.00")
+
+    @property
+    def account_number_mask(self):
+        return self.account.account_number_masked if self.account else None
+
+    @property
+    def name(self):
+        return self.card_name
 
 class Payslip(Base):
     __tablename__ = "payslips"

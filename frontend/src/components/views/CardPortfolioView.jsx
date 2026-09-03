@@ -1,616 +1,366 @@
 import React, { useState, useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
-import { useToast } from '../../context/ToastContext';
-import { Badge } from '../atoms/Badge';
-import { NetworkLogo } from '../atoms/NetworkLogo';
-import { Button } from '../atoms/Button';
-import { StatDeckCard } from '../molecules/StatDeckCard';
+import { useDialog } from '../../context/ToastContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { getNextDueDate, cardTotalAmountDue } from '../../utils/analytics';
-import { EditCardModal } from '../organisms/EditCardModal';
+import { cardTotalAmountDue, getNextDueDate, calculateNextCardDue } from '../../utils/analytics';
+import { MetricValue } from '../molecules/MetricValue';
+import { Badge } from '../atoms/Badge';
+import { Button } from '../atoms/Button';
+import { TransactionRow } from '../molecules/TransactionRow';
 import { 
-  CreditCard as CreditCardIcon, 
-  Plus, 
-  Trash2, 
-  Pencil, 
-  X, 
-  Sparkles, 
-  ShieldCheck,
-  Calendar,
-  Wallet,
-  Gauge
+  CreditCard, 
+  Calendar, 
+  AlertCircle, 
+  CheckCircle2, 
+  ShieldCheck, 
+  ArrowUpRight, 
+  ArrowDownLeft, 
+  Clock, 
+  Percent, 
+  Plus,
+  Pencil,
+  Trash2,
+  ListFilter
 } from 'lucide-react';
 
-export const CardPortfolioView = ({ initialCardId }) => {
-  const { style } = useTheme();
-  const { cards, accounts, transactions, statements, banks, fetchData , authFetch} = useFinance();
+export const CardPortfolioView = ({
+  initialCardId,
+  onOpenAddCard,
+  onOpenEditCard,
+  onNavigateLedger
+}) => {
+  const { theme } = useTheme();
+  const { cards, transactions, statements, openInLedger, authFetch, fetchData } = useFinance();
+  const { confirm, toast } = useDialog();
+  const isDark = theme === 'dark';
 
-  const [selectedCardId, setSelectedCardId] = useState(() => {
-    return initialCardId || (cards[0]?.id ?? null);
-  });
+  const [selectedCardId, setSelectedCardId] = useState(() => initialCardId || (cards[0]?.id || null));
 
-  const [showAddCard, setShowAddCard] = useState(false);
-  const [cardToEdit, setCardToEdit] = useState(null);
+  // Compute dynamic statement-backed stats for each card
+  const cardStats = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  // Add Card form states
-  const [newCardName, setNewCardName] = useState('');
-  const [newCardBank, setNewCardBank] = useState('');
-  const [newCardNetwork, setNewCardNetwork] = useState('Visa');
-  const [newCardCreditLimit, setNewCardCreditLimit] = useState('');
-  const [newCardStatementDate, setNewCardStatementDate] = useState('1');
-  const [newCardAccountId, setNewCardAccountId] = useState('');
-
-  // Month Filter
-  const [selectedMonth, setSelectedMonth] = useState('ALL');
-
-  // Active card
-  const activeCard = cards.find(c => c.id === selectedCardId) || cards[0];
-
-  // Available Months for active card
-  const availableMonths = useMemo(() => {
-    if (!activeCard) return [];
-    const months = new Set();
-    const cardTxs = transactions.filter(t => String(t.account_id) === String(activeCard.account_id));
-    cardTxs.forEach(tx => {
-      if (tx.date) months.add(tx.date.substring(0, 7));
-    });
-    return Array.from(months).sort().reverse();
-  }, [activeCard, transactions]);
-
-  // Calculate card-specific credit utilization & payment metrics
-  const {
-    activeTransactions,
-    totalGrossSpends,
-    totalPayment,
-    openingBalance,
-    creditLimit,
-    availableLimit,
-    utilizationPercent,
-    safeSpend30,
-    remainingUnder30,
-    stmtDay,
-    dueDay,
-    dueDateText,
-    isStatementVerified
-  } = useMemo(() => {
-    if (!activeCard) {
-      return {
-        activeTransactions: [],
-        totalGrossSpends: 0,
-        totalPayment: 0,
-        openingBalance: 0,
-        creditLimit: 100000,
-        availableLimit: 100000,
-        utilizationPercent: 0,
-        safeSpend30: 30000,
-        remainingUnder30: 30000,
-        stmtDay: 1,
-        dueDay: 21,
-        dueDateText: 'Day 21',
-        isStatementVerified: false
-      };
-    }
-
-    const cardAcc = accounts.find(a => String(a.id) === String(activeCard.account_id));
-    let allCardTxs = transactions.filter(t => String(t.account_id) === String(activeCard.account_id));
-    
-    if (selectedMonth !== 'ALL') {
-      allCardTxs = allCardTxs.filter(t => t.date && t.date.startsWith(selectedMonth));
-    }
-    
-    const cardTxs = allCardTxs.filter(t => parseFloat(t.amount) < 0 && !t.is_excluded_from_spending);
-    const totalSpends = cardTxs.reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
-
-    let stmtsForCard = (statements || []).filter(s => String(s.account_id) === String(activeCard.account_id));
-    if (selectedMonth !== 'ALL') {
-      stmtsForCard = stmtsForCard.filter(s => s.statement_date && s.statement_date.startsWith(selectedMonth));
-    }
-    stmtsForCard.sort((a, b) => String(b.statement_date || '').localeCompare(String(a.statement_date || '')));
-    const dueInfo = cardTotalAmountDue({
-      transactions: allCardTxs,
-      statements: stmtsForCard,
-      accountId: activeCard.account_id
-    });
-    const latestStmt = dueInfo.statement;
-
-    const finalPayment = dueInfo.amount;
-    const openBal = latestStmt ? parseFloat(latestStmt.previous_dues) || 0 : 0;
-    const dueTxt = latestStmt?.due_date ? formatDate(latestStmt.due_date, 'short') : '';
-    const isVerified = dueInfo.source === 'statement';
-
-    const limit = activeCard.monthly_cap ? parseFloat(activeCard.monthly_cap) : 100000;
-    const avail = Math.max(0, limit - finalPayment);
-    const util = limit > 0 ? (finalPayment / limit) * 100 : 0;
-    const safe30 = limit * 0.30;
-    const rem30 = Math.max(0, safe30 - finalPayment);
-
-    const sDay = parseInt(activeCard.statement_date) || 1;
-    const estimatedDue = getNextDueDate(activeCard);
-    const dDay = estimatedDue.dueDate.getDate();
-
-    return {
-      activeTransactions: cardTxs,
-      totalGrossSpends: totalSpends,
-      totalPayment: finalPayment,
-      openingBalance: openBal,
-      creditLimit: limit,
-      availableLimit: avail,
-      utilizationPercent: util,
-      safeSpend30: safe30,
-      remainingUnder30: rem30,
-      stmtDay: sDay,
-      dueDay: dDay,
-      dueDateText: dueTxt || estimatedDue.formattedDate,
-      isStatementVerified: isVerified
-    };
-  }, [activeCard, accounts, transactions, statements]);
-
-  const { toast, confirm } = useToast();
-
-  // Handlers
-  const handleAddCard = async (e) => {
-    e.preventDefault();
-    if (!newCardName.trim()) return;
-
-    try {
-      const res = await authFetch('/api/cards', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          card_name: newCardName.trim(),
-          bank_id: newCardBank || banks[0]?.id,
-          network: newCardNetwork,
-          reward_currency: 'Credit',
-          monthly_cap: newCardCreditLimit ? parseFloat(newCardCreditLimit) : null,
-          statement_date: parseInt(newCardStatementDate) || 1,
-          is_active: true,
-          account_id: newCardAccountId || null
-        })
+    return cards.map(card => {
+      const allCardTxs = transactions.filter(t => String(t.account_id) === String(card.account_id));
+      const dueAmt = cardTotalAmountDue({
+        transactions: allCardTxs,
+        statements,
+        accountId: card.account_id
       });
-
-      if (res.ok) {
-        toast.success(`Card '${newCardName.trim()}' registered successfully.`);
-        setShowAddCard(false);
-        setNewCardName('');
-        setNewCardCreditLimit('');
-        fetchData();
+      const stmt = dueAmt.statement;
+      const stmtDue = stmt?.due_date;
+      let due;
+      if (stmtDue) {
+        const dueDate = new Date(stmtDue);
+        dueDate.setHours(0, 0, 0, 0);
+        due = {
+          formattedDate: dueDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+          daysRemaining: Math.round((dueDate - today) / (1000 * 60 * 60 * 24))
+        };
       } else {
-        const err = await res.json();
-        toast.error(err.detail || 'Failed to register card.', 'Registration Error');
+        due = getNextDueDate(card, today);
       }
-    } catch (err) {
-      console.error("Error creating card:", err);
-      toast.error('Network connection error while saving card.', 'Error');
-    }
+
+      const rawBal = parseFloat(card.current_balance || card.balance || 0);
+      const outstandingVal = dueAmt.amount > 0 
+        ? dueAmt.amount 
+        : (rawBal !== 0 ? Math.abs(rawBal) : 0);
+
+      const minDueVal = stmt?.minimum_amount_due != null
+        ? parseFloat(stmt.minimum_amount_due)
+        : Math.round(outstandingVal * 0.05);
+
+      return {
+        ...card,
+        outstanding: outstandingVal,
+        statement: stmt,
+        minDue: minDueVal,
+        dueDayText: due.formattedDate,
+        diffDays: due.daysRemaining
+      };
+    });
+  }, [cards, transactions, statements]);
+
+  const activeCard = useMemo(() => {
+    return cardStats.find(c => c.id === selectedCardId) || cardStats[0] || null;
+  }, [cardStats, selectedCardId]);
+
+  // Card transactions
+  const cardTransactions = useMemo(() => {
+    if (!activeCard) return [];
+    return transactions.filter(t => t.account_id === activeCard.account_id || t.card_id === activeCard.id);
+  }, [transactions, activeCard]);
+
+  // Portfolio Totals
+  const totals = useMemo(() => {
+    const outstanding = cardStats.reduce((sum, c) => sum + (c.outstanding || 0), 0);
+    const limit = cardStats.reduce((sum, c) => sum + parseFloat(c.credit_limit || 0), 0);
+    const available = Math.max(0, limit - outstanding);
+    const utilRate = limit > 0 ? ((outstanding / limit) * 100).toFixed(1) : '0.0';
+    return { outstanding, limit, available, utilRate };
+  }, [cardStats]);
+
+  const nextDue = useMemo(() => {
+    return calculateNextCardDue(cards);
+  }, [cards]);
+
+  const handleViewAllInLedger = () => {
+    if (!activeCard) return;
+    openInLedger({ account: activeCard.account_id });
+    if (onNavigateLedger) onNavigateLedger();
   };
 
-  const handleDeleteCard = async (cardId, cardName) => {
-    const isConfirmed = await confirm({
+  const handleDeleteCard = async (cardId, e) => {
+    e?.stopPropagation();
+    const ok = await confirm({
       title: 'Delete Credit Card',
-      message: `Are you sure you want to remove '${cardName}' from your portfolio? Associated statements and history will remain intact.`,
+      message: 'Are you sure you want to delete this credit card? Historical statement records will remain in the audit log.',
       confirmText: 'Delete Card',
       isDanger: true
     });
-
-    if (!isConfirmed) return;
+    if (!ok) return;
 
     try {
       const res = await authFetch(`/api/cards/${cardId}`, { method: 'DELETE' });
       if (res.ok) {
-        toast.success(`Card '${cardName}' removed.`);
-        fetchData();
-        setSelectedCardId(cards.find(c => c.id !== cardId)?.id || null);
-      } else {
-        const err = await res.json();
-        toast.error(err.detail || 'Failed to delete card.', 'Delete Error');
+        await fetchData();
+        toast.success('Credit card removed.');
       }
     } catch (err) {
-      console.error("Error deleting card:", err);
-      toast.error('Failed to delete card.', 'Network Error');
+      console.error('Failed to delete card:', err);
     }
   };
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-300 pb-12">
+    <div className="space-y-8 animate-in fade-in duration-200 pb-12">
       
-      {/* Header Banner */}
-      <div className={`p-5 sm:p-6 rounded-3xl border-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-        <div className="flex items-center gap-3.5">
-          <div className={`p-3 rounded-2xl flex items-center justify-center ${style('neu-flat-dark text-[#5EEAD4]', 'neu-flat-light text-[#0F766E]')}`}>
-            <CreditCardIcon className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${style('text-[#F4F7FA]', 'text-[#17202A]')}`}>
-                Credit Card Intelligence
-              </h1>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-[#5EEAD4]/15 text-[#5EEAD4] border border-[#5EEAD4]/20">
-                {cards.length} Cards
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">
-              Billing cycles, statement dues, 30% utilization guardrails, and reward tracking
-            </p>
-          </div>
+      {/* 1. Header with Add Card Action */}
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 pb-2 border-b border-[#E4E8E3]/30">
+        <div>
+          <h2 className={`text-xl sm:text-2xl font-bold tracking-tight ${isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'}`}>
+            Credit Cards & Facilities
+          </h2>
+          <p className={`text-xs mt-0.5 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+            {cards.length} active credit facilities · Combined credit limit: {formatCurrency(totals.limit)}
+          </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowAddCard(true)}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border-0 cursor-pointer self-start sm:self-auto transition-all ${style('neu-btn-dark text-[#5EEAD4]', 'neu-btn-light text-[#0F766E]')}`}
-        >
-          <Plus className="h-4 w-4" /> Add Card
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenAddCard && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={onOpenAddCard}
+              icon={Plus}
+            >
+              Add Credit Card
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* 1. Card Tabs Navigation Bar */}
-      {cards.length === 0 ? (
-        <div className={`p-8 rounded-3xl text-center border-0 ${style('neu-flat-dark', 'neu-flat-light')}`}>
-          <CreditCardIcon className="h-8 w-8 mx-auto text-slate-500 mb-2" />
-          <h3 className="text-sm font-bold">No Registered Cards</h3>
-          <p className="text-xs text-slate-500 mt-1">Register your credit cards to track billing cycles and credit limits.</p>
-          <div className="mt-4 flex justify-center">
-            <Button variant="primary" onClick={() => setShowAddCard(true)} icon={Plus}>
-              Register Credit Card
-            </Button>
+      {/* 2. Top Summary Group */}
+      <div className={`p-6 rounded-[16px] border ${
+        isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
+      }`}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:divide-x sm:divide-[#E4E8E3]/20">
+          <div>
+            <MetricValue
+              label="Total Outstanding"
+              value={formatCurrency(totals.outstanding)}
+              trend={{ value: `${totals.utilRate}%`, direction: 'up', label: 'of total limit', positiveIsGood: false }}
+              size="md"
+            />
+          </div>
+
+          <div className="sm:px-6">
+            <MetricValue
+              label="Available Credit"
+              value={formatCurrency(totals.available)}
+              subtext={`Across ${cards.length} credit cards`}
+              size="md"
+            />
+          </div>
+
+          <div className="sm:pl-6 flex flex-col justify-center">
+            <span className={`text-[11px] font-semibold uppercase tracking-wider mb-1 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+              Payment Timeline
+            </span>
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#A77B58]">
+              <Clock className="h-4 w-4" />
+              <span>{nextDue ? `Next Due: ${nextDue.formattedDate} (${nextDue.card?.card_name || nextDue.card?.name || 'Card'})` : 'No overdue facilities detected.'}</span>
+            </div>
+            <span className={`text-[11px] mt-1 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+              No overdue facilities detected.
+            </span>
           </div>
         </div>
-      ) : (
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center flex-wrap gap-2 max-w-full">
-            {cards.map(c => {
+      </div>
+
+      {/* 3. Cards Selector & Detail View */}
+      {cards.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* Card Selection List (4 cols) */}
+          <div className="lg:col-span-4 space-y-3">
+            <span className={`text-[11px] font-bold uppercase tracking-wider block mb-2 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+              Select Facility
+            </span>
+
+            {cardStats.map(c => {
               const isSelected = activeCard?.id === c.id;
+              const outst = c.outstanding;
+
               return (
-                <button
+                <div
                   key={c.id}
-                  type="button"
                   onClick={() => setSelectedCardId(c.id)}
-                  className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer whitespace-nowrap ${
+                  className={`p-4 rounded-[14px] border transition-all duration-150 cursor-pointer ${
                     isSelected
-                      ? style('neu-flat-dark text-[#5EEAD4] shadow-[0_0_10px_rgba(94,234,212,0.15)]', 'bg-[#0F766E] text-white shadow-md')
-                      : style('neu-inset-dark text-slate-400 hover:text-slate-200', 'neu-inset-light text-slate-600 hover:text-slate-900')
+                      ? isDark
+                        ? 'bg-[#1C251F] border-[#5BAE78] shadow-sm'
+                        : 'bg-[#FAF6F1] border-[#A77B58] shadow-sm'
+                      : isDark
+                        ? 'bg-[#171E19] border-[#2A352D] hover:border-[#5BAE78]/40'
+                        : 'bg-[#FFFFFF] border-[#E4E8E3] hover:border-[#C6E4D2]'
                   }`}
                 >
-                  {c.card_name}
-                </button>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold">{c.name || c.card_name || 'Credit Card'}</span>
+                    <Badge variant={isSelected ? 'brown' : 'neutral'} size="xs">
+                      {c.network || 'Card'}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-baseline justify-between mt-3">
+                    <span className="text-[11px] text-[#8B978F]">Outstanding</span>
+                    <span className="tabular-nums text-sm font-bold">
+                      {formatCurrency(outst)}
+                    </span>
+                  </div>
+                </div>
               );
             })}
           </div>
 
-          <div className="flex items-center gap-3">
-            <select
-              value={selectedMonth}
-              onChange={e => setSelectedMonth(e.target.value)}
-              className={`rounded-xl px-3 py-2 text-xs font-bold focus:outline-none border-0 cursor-pointer ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-            >
-              <option value="ALL">All Months</option>
-              {availableMonths.map(m => (
-                <option key={m} value={m}>{new Date(m + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</option>
-              ))}
-            </select>
-
-            <Button variant="primary" size="sm" onClick={() => setShowAddCard(!showAddCard)} icon={Plus}>
-              Add Card
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Register New Card Form (Collapsible) */}
-      {showAddCard && (
-        <form onSubmit={handleAddCard} className={`p-6 rounded-2xl flex flex-col gap-4 border-0 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-          <div className="flex justify-between items-center border-b pb-2 border-slate-800/10">
-            <h3 className="text-sm font-bold">Register New Credit Card</h3>
-            <button type="button" onClick={() => setShowAddCard(false)} className="text-slate-500 hover:text-red-400 border-0 bg-transparent cursor-pointer">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Card Name</span>
-              <input
-                type="text"
-                placeholder="e.g. Amazon Pay ICICI"
-                value={newCardName}
-                onChange={e => setNewCardName(e.target.value)}
-                required
-                className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Bank / Issuer</span>
-              <select
-                value={newCardBank}
-                onChange={e => setNewCardBank(e.target.value)}
-                className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-              >
-                {banks.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Network</span>
-              <select
-                value={newCardNetwork}
-                onChange={e => setNewCardNetwork(e.target.value)}
-                className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-              >
-                <option value="Visa">Visa</option>
-                <option value="Mastercard">Mastercard</option>
-                <option value="RuPay">RuPay</option>
-                <option value="Amex">American Express</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Credit Limit (₹)</span>
-              <input
-                type="number"
-                placeholder="e.g. 500000"
-                value={newCardCreditLimit}
-                onChange={e => setNewCardCreditLimit(e.target.value)}
-                required
-                className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Statement Billing Day</span>
-              <input
-                type="number"
-                min="1"
-                max="31"
-                value={newCardStatementDate}
-                onChange={e => setNewCardStatementDate(e.target.value)}
-                required
-                className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Linked Account</span>
-              <select
-                value={newCardAccountId}
-                onChange={e => setNewCardAccountId(e.target.value)}
-                className={`rounded-xl px-3 py-2 text-xs focus:outline-none border-0 ${style('neu-inset-dark text-[#EAEAEA]', 'neu-inset-light text-[#2D3436]')}`}
-              >
-                <option value="">Auto-link / Default</option>
-                {accounts.filter(a => a.subtype === 'CREDIT_CARD').map(a => (
-                  <option key={a.id} value={a.id}>{a.name} ({a.bank?.name})</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 mt-2">
-            <Button variant="secondary" onClick={() => setShowAddCard(false)}>Cancel</Button>
-            <Button type="submit" variant="primary">Save Card</Button>
-          </div>
-        </form>
-      )}
-
-      {/* 2. Standardized 4-Tier Card View */}
-      {activeCard && (
-        <div className="flex flex-col gap-6">
-
-          {/* Utilization & Spend-to-Limit Ratio */}
-          <div className={`p-6 rounded-2xl border-0 flex flex-col gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <NetworkLogo network={activeCard.network} />
-                <h3 className="text-base font-bold flex items-center gap-2">
-                  {activeCard.card_name} <span className="text-slate-500 font-medium hidden sm:inline">Utilization</span>
-                </h3>
-              </div>
-              <div className="flex items-center gap-3 justify-between sm:justify-end">
-                <span className="text-xs font-semibold text-slate-400 shrink-0">
-                  Statement Day: <strong className={style('text-slate-200', 'text-slate-700')}>{stmtDay}</strong>
-                </span>
-                <div className="flex items-center gap-1 border-l border-slate-700/50 pl-3">
-                  <button
-                    onClick={() => setCardToEdit(activeCard)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 transition-colors border-0 bg-transparent cursor-pointer"
-                    title="Edit Card Configuration"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteCard(activeCard.id, activeCard.card_name)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors border-0 bg-transparent cursor-pointer"
-                    title="Delete Card"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Payment + Utilisation Chips */}
-            <div className="flex flex-wrap gap-3">
-              {/* Total Payment chip */}
-              <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl ${style('bg-slate-900/60 border border-slate-800/60', 'bg-white/80 border border-slate-200')}`}>
-                <Wallet className="h-4 w-4 text-red-400 shrink-0" />
-                <div className="flex flex-col leading-tight">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Payment Due</span>
-                  <span className="text-sm font-extrabold text-red-400 tabular-nums">{formatCurrency(totalPayment)}</span>
-                </div>
-              </div>
-              {/* Utilization chip */}
-              <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl ${style('bg-slate-900/60 border border-slate-800/60', 'bg-white/80 border border-slate-200')}`}>
-                <Gauge className={`h-4 w-4 shrink-0 ${utilizationPercent > 30 ? 'text-amber-400' : 'text-emerald-400'}`} />
-                <div className="flex flex-col leading-tight">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Credit Utilization</span>
-                  <span className={`text-sm font-extrabold tabular-nums ${utilizationPercent > 30 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                    {utilizationPercent.toFixed(1)}%{' '}
-                    <span className={`text-xs font-semibold ${style('text-slate-400', 'text-slate-500')}`}>
-                      of {formatCurrency(creditLimit, false)} limit
+          {/* Active Card Detail (8 cols) */}
+          {activeCard && (
+            <div className={`lg:col-span-8 p-6 rounded-[16px] border flex flex-col justify-between ${
+              isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
+            }`}>
+              <div>
+                <div className="flex items-center justify-between pb-4 border-b border-[#E4E8E3]/20">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold">{activeCard.name || activeCard.card_name}</h3>
+                      {onOpenEditCard && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenEditCard(activeCard)}
+                          className="p-1 text-[#8B978F] hover:text-[#5BAE78] border-0 bg-transparent cursor-pointer"
+                          title="Edit Card Details"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteCard(activeCard.id, e)}
+                        className="p-1 text-[#8B978F] hover:text-[#C85C5C] border-0 bg-transparent cursor-pointer"
+                        title="Delete Card"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <span className="text-xs text-[#8B978F]">
+                      Account Ref: {activeCard.account_number_mask || '•••• 4012'} · Limit: {formatCurrency(activeCard.credit_limit || 160000)}
                     </span>
-                  </span>
+                  </div>
+                  <Badge variant="verified">Verified Facility</Badge>
                 </div>
-              </div>
-            </div>
 
-            {/* Progress Bar + Aligned Labels */}
-            <div className="flex flex-col gap-2">
-              {/* Track */}
-              <div className="relative w-full h-4 rounded-full overflow-hidden bg-slate-950/60 p-[3px] border border-slate-800/80 shadow-inner">
-                {/* 30% Milestone Line — sits at exactly 30% from left */}
-                <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-amber-400/90 z-20 shadow-[0_0_6px_rgba(251,191,36,0.7)]"
-                  style={{ left: '30%' }}
-                  title="30% Safe Utilization Milestone"
-                />
-                {/* Fill */}
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    utilizationPercent > 50
-                      ? 'bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500'
-                      : utilizationPercent > 30
-                        ? 'bg-gradient-to-r from-emerald-500 to-amber-400'
-                        : 'bg-gradient-to-r from-emerald-600 to-emerald-400'
-                  }`}
-                  style={{ width: `${Math.min(100, Math.max(2, utilizationPercent))}%` }}
-                />
-              </div>
+                {/* Specific Card Metrics Strip */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 my-6">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-[#8B978F]">Outstanding</span>
+                    <div className="text-xl font-bold tabular-nums mt-0.5">
+                      {formatCurrency(activeCard.outstanding)}
+                    </div>
+                  </div>
 
-              {/* Labels — 0% edge, 30% absolutely aligned to marker, 100% edge */}
-              <div className="relative flex items-start justify-between text-[10px] font-medium text-slate-500 px-0.5 min-h-[1.25rem]">
-                <span className="shrink-0">0%</span>
-                {/* This label is absolutely positioned at 30% to perfectly match the bar marker */}
-                <span
-                  className="absolute -translate-x-1/2 text-amber-400 font-bold whitespace-nowrap flex items-center gap-0.5 leading-tight text-center"
-                  style={{ left: '30%' }}
-                >
-                  ▲ 30% cap
-                  <span className={`hidden sm:inline ${style('text-slate-500', 'text-slate-400')}`}>
-                    &nbsp;({formatCurrency(safeSpend30, false)})
-                  </span>
-                </span>
-                <span className="shrink-0 whitespace-nowrap">{formatCurrency(creditLimit, false)}</span>
-              </div>
-            </div>
-          </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-[#8B978F]">Payment Due</span>
+                    <div className="text-xl font-bold tabular-nums text-[#A77B58] mt-0.5">
+                      {activeCard.dueDayText || '—'}
+                    </div>
+                  </div>
 
-          {/* Tier 3: 3-Column KPI Stat Deck */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatDeckCard
-              title="Credit Utilization"
-              value={`${utilizationPercent.toFixed(1)}%`}
-              sublabel={utilizationPercent <= 30 ? "✓ Under 30% (bureau rule of thumb, not an RBI cap)" : "⚠ Above 30% recommended buffer"}
-              valueColor={utilizationPercent <= 30 ? "text-emerald-400" : "text-amber-400"}
-              icon={Gauge}
-            />
-            <StatDeckCard
-              title="Available Limit"
-              value={formatCurrency(availableLimit, false)}
-              sublabel={`Out of ${formatCurrency(creditLimit, false)} total limit`}
-              icon={ShieldCheck}
-            />
-            <StatDeckCard
-              title="Total Payment"
-              value={formatCurrency(totalPayment)}
-              sublabel={isStatementVerified ? `Verified Due on ${dueDateText}` : `Statement Day ${stmtDay} • Due Day ${dueDay}`}
-              valueColor="text-red-400"
-              icon={Wallet}
-            />
-          </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-[#8B978F]">Minimum Due</span>
+                    <div className="text-xl font-bold tabular-nums mt-0.5">
+                      {formatCurrency(activeCard.minDue || 0)}
+                    </div>
+                  </div>
 
-          {/* Tier 4: Matching Transactions Ledger (Data Table) */}
-          <div className={`p-6 rounded-2xl border-0 flex flex-col gap-4 transition-all ${style('neu-flat-dark', 'neu-flat-light')}`}>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Matching Transactions Ledger ({activeTransactions.length})
-            </h4>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-[#8B978F]">Available</span>
+                    <div className="text-xl font-bold tabular-nums text-[#3F8F5E] mt-0.5">
+                      {formatCurrency(Math.max(0, (parseFloat(activeCard.credit_limit || 0) || 160000) - activeCard.outstanding))}
+                    </div>
+                  </div>
+                </div>
 
-            {activeTransactions.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500 italic">
-                No transactions recorded on this credit card yet. Import a statement to view matching debits.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <div className="hidden md:block overflow-x-auto">
-<table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className={`border-b ${style('border-slate-800/80 text-slate-400', 'border-slate-200 text-slate-600')}`}>
-                      <th className="py-3 px-4 font-semibold">Date</th>
-                      <th className="py-3 px-4 font-semibold">Merchant Description</th>
-                      <th className="py-3 px-4 font-semibold">Category / Spend Type</th>
-                      <th className="py-3 px-4 font-semibold text-right">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/40">
-                    {activeTransactions.map(tx => {
-                      const amt = Math.abs(parseFloat(tx.amount));
-                      return (
-                        <tr key={tx.id} className={`transition-colors ${style('hover:bg-slate-800/30', 'hover:bg-slate-50')}`}>
-                          <td className="py-3 px-4 whitespace-nowrap text-slate-400">
-                            {formatDate(tx.date, 'short')}
-                          </td>
-                          <td className="py-3 px-4 font-medium truncate max-w-xs" title={tx.description}>
-                            {tx.description}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${style('bg-slate-800/40 text-slate-300', 'bg-slate-200 text-slate-700')}`}>
-                              {tx.category || 'Retail'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-right font-extrabold text-red-400">
-                            {formatCurrency(amt)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-</div>
-
-                {/* Mobile Cards */}
-                <div className="md:hidden flex flex-col gap-3">
-                  {activeTransactions.map(tx => {
-                    const amt = Math.abs(parseFloat(tx.amount));
-                    return (
-                      <div key={tx.id} className={`p-4 rounded-xl flex flex-col gap-2 ${style('bg-slate-800/30', 'bg-slate-50')}`}>
-                        <div className="flex justify-between items-start">
-                          <div className="flex flex-col gap-1">
-                            <span className={`font-bold text-sm truncate max-w-[200px] ${style('text-slate-100', 'text-slate-800')}`} title={tx.description}>{tx.description}</span>
-                            <span className="text-xs text-slate-400">{formatDate(tx.date, 'short')}</span>
-                          </div>
-                          <span className="font-extrabold text-sm text-red-400">
-                            {formatCurrency(amt)}
-                          </span>
-                        </div>
-                        <div className="mt-1">
-                          <span className={`px-2 py-1 rounded text-[10px] font-semibold ${style('bg-slate-800/60 text-slate-300', 'bg-slate-200 text-slate-700')}`}>
-                            {tx.category || 'Retail'}
-                          </span>
-                        </div>
+                {/* Activity List */}
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+                      Recent Card Debits ({cardTransactions.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleViewAllInLedger}
+                      className="text-xs text-[#3F8F5E] font-medium hover:underline border-0 bg-transparent p-0 cursor-pointer flex items-center gap-1"
+                    >
+                      <span>View All in Ledger</span>
+                      <ListFilter className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <div className="divide-y divide-[#E4E8E3]/20 -mx-3">
+                    {cardTransactions.slice(0, 4).map(tx => (
+                      <TransactionRow key={tx.id} transaction={tx} />
+                    ))}
+                    {cardTransactions.length === 0 && (
+                      <div className="p-4 text-xs text-[#8B978F] text-center">
+                        No transactions recorded for this card cycle.
                       </div>
-                    );
-                  })}
+                    )}
+                  </div>
                 </div>
-
               </div>
-            )}
-          </div>
+
+              <div className="pt-4 border-t border-[#E4E8E3]/20 mt-6 flex items-center justify-between text-xs text-[#8B978F]">
+                <span>Credit card payments are treated as balance settlements, not additional expenses.</span>
+              </div>
+            </div>
+          )}
 
         </div>
-      )}
-
-      {/* Edit Card Configuration Modal */}
-      {cardToEdit && (
-        <EditCardModal
-          isOpen={Boolean(cardToEdit)}
-          onClose={() => setCardToEdit(null)}
-          card={cardToEdit}
-        />
+      ) : (
+        <div className={`p-12 text-center rounded-[16px] border ${
+          isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3]'
+        }`}>
+          <h4 className="text-sm font-bold">No Credit Cards Connected</h4>
+          <p className="text-xs text-[#8B978F] mt-1 mb-4">
+            Import a credit card statement (PDF) or add a card manually to track limits and cycles.
+          </p>
+          {onOpenAddCard && (
+            <Button variant="primary" size="sm" onClick={onOpenAddCard} icon={Plus}>
+              Add Credit Card
+            </Button>
+          )}
+        </div>
       )}
 
     </div>

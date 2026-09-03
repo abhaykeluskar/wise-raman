@@ -7,8 +7,9 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { PieChart as PieIcon, ChevronDown } from 'lucide-react';
 
 export const CategoryDonutCard = () => {
-  const { theme, style } = useTheme();
+  const { theme } = useTheme();
   const { transactions } = useFinance();
+  const isDark = theme === 'dark';
 
   // Extract unique available months from transactions
   const availableMonths = useMemo(() => {
@@ -28,7 +29,7 @@ export const CategoryDonutCard = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
 
-  // Calculate categorized spend for selected month (excluding transfers & CC payments)
+  // Calculate categorized spend for selected month
   const { donutData, totalMonthSpend } = useMemo(() => {
     const validTxs = transactions.filter(t => {
       if (t.is_excluded_from_spending || parseFloat(t.amount) >= 0) return false;
@@ -65,12 +66,14 @@ export const CategoryDonutCard = () => {
   };
 
   return (
-    <div className={`p-6 rounded-3xl border-0 flex flex-col justify-between transition-all duration-300 min-h-[320px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
+    <div className={`p-6 rounded-[16px] border flex flex-col justify-between transition-all duration-150 min-h-[320px] ${
+      isDark ? 'bg-[#171E19] border-[#2A352D] text-[#F1F5F2]' : 'bg-[#FFFFFF] border-[#E4E8E3] text-[#1D2822]'
+    }`}>
       <div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
-            <PieIcon className="h-4 w-4 text-[#5EEAD4]" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            <PieIcon className="h-4 w-4 text-[#3F8F5E]" />
+            <h3 className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
               Category Distribution
             </h3>
           </div>
@@ -80,10 +83,9 @@ export const CategoryDonutCard = () => {
             <select
               value={selectedMonth}
               onChange={e => setSelectedMonth(e.target.value)}
-              className={`rounded-xl px-3 py-1.5 pr-8 text-xs font-semibold appearance-none cursor-pointer border-0 transition-all ${style(
-                'neu-inset-dark text-[#F4F7FA]',
-                'neu-inset-light text-[#17202A]'
-              )}`}
+              className={`rounded-[8px] px-3 py-1.5 pr-8 text-xs font-semibold appearance-none cursor-pointer border transition-all outline-none ${
+                isDark ? 'bg-[#1C251F] border-[#2A352D] text-[#F1F5F2]' : 'bg-[#FBFCFA] border-[#E4E8E3] text-[#1D2822]'
+              }`}
             >
               {availableMonths.length === 0 ? (
                 <option value={selectedMonth}>{formatMonthLabel(selectedMonth)}</option>
@@ -93,13 +95,13 @@ export const CategoryDonutCard = () => {
                 ))
               )}
             </select>
-            <ChevronDown className="h-3 w-3 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+            <ChevronDown className={`h-3 w-3 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`} />
           </div>
         </div>
 
         {/* Content Body */}
         {donutData.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-500 italic">
+          <div className={`py-12 text-center text-xs italic ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
             No categorized spending recorded for {formatMonthLabel(selectedMonth)}.
           </div>
         ) : (
@@ -123,10 +125,10 @@ export const CategoryDonutCard = () => {
                   </Pie>
                   <Tooltip 
                     contentStyle={{
-                      backgroundColor: theme === 'dark' ? '#151A22' : '#FFFFFF',
-                      borderColor: theme === 'dark' ? '#27313D' : '#D8E0E7',
-                      color: theme === 'dark' ? '#F4F7FA' : '#17202A',
-                      borderRadius: '12px',
+                      backgroundColor: isDark ? '#171E19' : '#FFFFFF',
+                      borderColor: isDark ? '#2A352D' : '#E4E8E3',
+                      color: isDark ? '#F1F5F2' : '#1D2822',
+                      borderRadius: '10px',
                       fontSize: '11px'
                     }}
                     formatter={(value) => [`₹${value.toLocaleString()}`, "Spend"]}
@@ -136,11 +138,13 @@ export const CategoryDonutCard = () => {
             </div>
 
             {/* Category breakdown list */}
-            <div className="w-full sm:w-1/2 flex flex-col gap-1.5 max-h-[170px] overflow-y-auto pr-1 custom-scrollbar">
+            <div className="w-full sm:w-1/2 flex flex-col gap-1.5 max-h-[170px] overflow-y-auto pr-1">
               {donutData.map((d, index) => (
                 <div 
                   key={d.name} 
-                  className={`flex items-center justify-between p-1.5 px-2.5 rounded-lg border-0 ${style('hover:bg-slate-800/30', 'hover:bg-slate-100/50')} transition-colors`}
+                  className={`flex items-center justify-between p-1.5 px-2 rounded-[6px] transition-colors ${
+                    isDark ? 'hover:bg-[#1C251F]' : 'hover:bg-[#FBFCFA]'
+                  }`}
                 >
                   <div className="flex items-center gap-2 text-xs font-medium min-w-0">
                     <span 
@@ -150,7 +154,7 @@ export const CategoryDonutCard = () => {
                     <span className="truncate">{d.name}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400 font-semibold tabular-nums">
+                    <span className={`text-xs font-semibold tabular-nums ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
                       {d.percent.toFixed(0)}%
                     </span>
                     <span className="text-xs font-bold tabular-nums">
@@ -165,11 +169,11 @@ export const CategoryDonutCard = () => {
         )}
       </div>
 
-      <div className="mt-4 pt-3 border-t border-slate-800/10 flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+      <div className="mt-4 pt-3 border-t border-[#E4E8E3]/20 flex items-center justify-between">
+        <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
           Total Month Spend
         </span>
-        <span className="text-base font-black tabular-nums">
+        <span className="text-base font-bold tabular-nums text-[#C85C5C]">
           {formatCurrency(totalMonthSpend)}
         </span>
       </div>

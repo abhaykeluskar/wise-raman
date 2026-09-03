@@ -1,179 +1,205 @@
 import React, { useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
-import { X, TrendingUp, TrendingDown, Store, ListOrdered } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts';
+import { X, TrendingUp, TrendingDown, Store, ArrowRight, ExternalLink } from 'lucide-react';
+import { Button } from '../atoms/Button';
+import { Badge } from '../atoms/Badge';
 
 export const AnalyticsDrilldownModal = ({ category, transactions, onClose, onOpenInLedger }) => {
-  const { theme, style } = useTheme();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   if (!category) return null;
 
+  // Filter transactions for this category
   const categoryTxs = useMemo(() => {
-    return transactions
-      .filter(t => t.category === category)
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [transactions, category]);
+    return transactions.filter(t => t.category === category);
+  }, [category, transactions]);
 
-  // 1. Top Merchants
+  // Aggregate by merchant
   const merchants = useMemo(() => {
-    const grouped = {};
-    categoryTxs.forEach(tx => {
-      const amt = parseFloat(tx.amount);
-      if (amt < 0) {
-        const m = tx.description || 'Unknown';
-        grouped[m] = (grouped[m] || 0) + Math.abs(amt);
-      }
+    const map = {};
+    categoryTxs.forEach(t => {
+      const name = t.merchant || t.description || 'Unknown';
+      map[name] = (map[name] || 0) + Math.abs(t.amount);
     });
-    return Object.entries(grouped)
-      .map(([name, Spend]) => ({ name, Spend }))
+    return Object.entries(map)
+      .map(([name, total]) => ({ name, Spend: Math.round(total) }))
       .sort((a, b) => b.Spend - a.Spend)
-      .slice(0, 5); // Top 5
+      .slice(0, 5);
   }, [categoryTxs]);
 
-  // 2. Trend (last 6 months)
+  // Trend over last 6 months
   const trendData = useMemo(() => {
-    const grouped = {};
+    const months = {};
     const now = new Date();
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-      grouped[key] = { name: key, Spend: 0, sortKey: d.getTime() };
+      const key = d.toLocaleString('default', { month: 'short' });
+      months[key] = 0;
     }
 
-    categoryTxs.forEach(tx => {
-      const amt = parseFloat(tx.amount);
-      if (amt < 0) {
-        const d = new Date(tx.date);
-        const key = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-        if (grouped[key]) {
-          grouped[key].Spend += Math.abs(amt);
-        }
+    categoryTxs.forEach(t => {
+      const d = new Date(t.date);
+      const key = d.toLocaleString('default', { month: 'short' });
+      if (months[key] !== undefined) {
+        months[key] += Math.abs(t.amount);
       }
     });
-    return Object.values(grouped).sort((a, b) => a.sortKey - b.sortKey);
+
+    return Object.entries(months).map(([name, spend]) => ({
+      name,
+      Spend: Math.round(spend)
+    }));
   }, [categoryTxs]);
 
-  const currentMonthSpend = trendData[5]?.Spend || 0;
-  const previousMonthSpend = trendData[4]?.Spend || 0;
-  const percentChange = previousMonthSpend > 0 
-    ? ((currentMonthSpend - previousMonthSpend) / previousMonthSpend) * 100 
-    : 0;
+  // Month-over-month calculation
+  const currentMonthSpend = trendData[trendData.length - 1]?.Spend || 0;
+  const lastMonthSpend = trendData[trendData.length - 2]?.Spend || 0;
+  const percentChange = lastMonthSpend > 0 ? ((currentMonthSpend - lastMonthSpend) / lastMonthSpend) * 100 : 0;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      
-      <div className={`relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl overflow-hidden border-0 ${style('bg-[#12121A]', 'bg-[#F0F5F9]')} shadow-2xl`}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Modal Content */}
+      <div className={`relative w-full max-w-2xl max-h-[85vh] rounded-[16px] border shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 ${
+        isDark ? 'bg-[#171E19] border-[#2A352D] text-[#F1F5F2]' : 'bg-[#FFFFFF] border-[#E4E8E3] text-[#1D2822]'
+      }`}>
         
-        <div className={`p-6 border-b flex justify-between items-center ${style('border-[#24243E]', 'border-[#E2E8F0]')}`}>
+        {/* Header */}
+        <div className="p-5 border-b border-[#E4E8E3]/20 flex justify-between items-center shrink-0">
           <div>
-            <h2 className={`text-2xl font-black ${style('text-white', 'text-slate-800')}`}>{category}</h2>
-            <p className="text-sm text-slate-500 font-medium">{categoryTxs.length} transactions total</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold tracking-tight">{category}</h2>
+              <Badge variant="brown" size="xs">{categoryTxs.length} Transactions</Badge>
+            </div>
+            <p className={`text-xs mt-0.5 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+              Category spending profile & merchant breakdown
+            </p>
           </div>
+
           <div className="flex items-center gap-2">
             {onOpenInLedger && (
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="xs"
                 onClick={onOpenInLedger}
-                className={`px-3 py-2 rounded-xl text-xs font-bold border-0 cursor-pointer ${style('neu-btn-dark text-[#5EEAD4]', 'neu-btn-light text-[#0F766E]')}`}
+                icon={ExternalLink}
               >
                 Open in Ledger
-              </button>
+              </Button>
             )}
             <button 
               type="button" 
               onClick={onClose}
-              className={`p-2 rounded-full ${style('hover:bg-[#19202A] text-slate-400 hover:text-white', 'hover:bg-slate-200 text-slate-500 hover:text-slate-800')} transition-colors`}
+              className={`p-1.5 rounded-[8px] border-0 bg-transparent cursor-pointer transition-colors ${
+                isDark ? 'text-[#8B978F] hover:text-[#F1F5F2]' : 'text-[#7B877F] hover:text-[#1D2822]'
+              }`}
             >
-              <X className="h-6 w-6" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8">
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className={`p-5 rounded-2xl ${style('neu-flat-dark', 'neu-flat-light')} flex flex-col gap-4`}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Top Merchants Card */}
+            <div className={`p-4 rounded-[12px] border flex flex-col gap-3 ${
+              isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+            }`}>
               <div className="flex items-center gap-2">
-                <Store className="h-4 w-4 text-slate-400" />
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Top Merchants</h3>
+                <Store className="h-4 w-4 text-[#3F8F5E]" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#8B978F]">Top Merchants</h3>
               </div>
-              <div className="h-48">
+              <div className="h-44">
                 {merchants.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={merchants} layout="vertical" margin={{ top: 0, right: 0, left: 10, bottom: 0 }}>
                       <XAxis type="number" hide />
-                      <YAxis dataKey="name" type="category" stroke="#8d99ae" fontSize={11} tickLine={false} axisLine={false} width={100} />
+                      <YAxis dataKey="name" type="category" stroke={isDark ? '#8B978F' : '#7B877F'} fontSize={11} tickLine={false} axisLine={false} width={90} />
                       <Tooltip 
-                        cursor={{fill: theme === 'dark' ? '#19202A' : '#E2E8F0'}}
-                        contentStyle={{ backgroundColor: theme==='dark'?'#151A22':'#FFF', borderColor: theme==='dark'?'#27313D':'#D8E0E7', borderRadius: '8px', color: theme==='dark'?'#F4F7FA':'#17202A' }}
+                        contentStyle={{ 
+                          backgroundColor: isDark ? '#171E19' : '#FFFFFF', 
+                          borderColor: isDark ? '#2A352D' : '#E4E8E3', 
+                          borderRadius: '10px', 
+                          fontSize: '12px'
+                        }}
                         formatter={(val) => [`₹${val.toLocaleString()}`, 'Spend']}
                       />
-                      <Bar dataKey="Spend" radius={[0, 4, 4, 0]} barSize={16}>
-                        {merchants.map((entry, idx) => (
-                          <Cell key={idx} fill={theme === 'dark' ? '#5EEAD4' : '#0F766E'} />
-                        ))}
-                      </Bar>
+                      <Bar dataKey="Spend" radius={[0, 4, 4, 0]} barSize={14} fill="#3F8F5E" />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-full flex items-center justify-center text-slate-500 text-sm">No spend data</div>
+                  <div className="h-full flex items-center justify-center text-xs text-[#8B978F]">No spend records</div>
                 )}
               </div>
             </div>
 
-            <div className={`p-5 rounded-2xl ${style('neu-flat-dark', 'neu-flat-light')} flex flex-col gap-4`}>
+            {/* 6-Month Trend Card */}
+            <div className={`p-4 rounded-[12px] border flex flex-col gap-3 ${
+              isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+            }`}>
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-slate-400" />
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">6-Month Trend</h3>
+                  <TrendingUp className="h-4 w-4 text-[#3F8F5E]" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#8B978F]">6-Month Trend</h3>
                 </div>
-                <div className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${percentChange > 0 ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                  percentChange > 0 ? 'bg-[#C85C5C]/15 text-[#C85C5C]' : 'bg-[#3F8F5E]/15 text-[#3F8F5E]'
+                }`}>
                   {percentChange > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                   {Math.abs(percentChange).toFixed(1)}% vs Last Mo
                 </div>
               </div>
-              <div className="h-40 mt-4">
+              <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={trendData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="name" stroke="#8d99ae" fontSize={10} tickLine={false} axisLine={false} />
+                  <BarChart data={trendData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="name" stroke={isDark ? '#8B978F' : '#7B877F'} fontSize={10} tickLine={false} axisLine={false} />
                     <Tooltip 
-                      cursor={{fill: theme === 'dark' ? '#24243E' : '#E2E8F0'}}
-                      contentStyle={{ backgroundColor: theme==='dark'?'#0F0F1A':'#FFF', borderColor: theme==='dark'?'#24243E':'#A3B1C6', borderRadius: '8px', color: theme==='dark'?'#EAEAEA':'#333' }}
+                      contentStyle={{ 
+                        backgroundColor: isDark ? '#171E19' : '#FFFFFF', 
+                        borderColor: isDark ? '#2A352D' : '#E4E8E3', 
+                        borderRadius: '10px', 
+                        fontSize: '12px'
+                      }}
                       formatter={(val) => [`₹${val.toLocaleString()}`, 'Spend']}
                     />
-                    <Bar dataKey="Spend" radius={[4, 4, 0, 0]} fill={theme === 'dark' ? '#A3B1C6' : '#94a3b8'} />
+                    <Bar dataKey="Spend" radius={[4, 4, 0, 0]} barSize={18} fill="#A77B58" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
           </div>
 
-          {/* Transaction Ledger */}
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2">
-              <ListOrdered className="h-4 w-4 text-slate-400" />
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Recent Transactions</h3>
-            </div>
-            <div className="flex flex-col gap-2">
-              {categoryTxs.slice(0, 50).map(tx => (
-                <div key={tx.id} className={`p-3 rounded-xl flex items-center justify-between gap-3 ${style('bg-[#1a1a2e]', 'bg-white')} border ${style('border-[#24243E]', 'border-slate-200')}`}>
-                  <div className="flex flex-col min-w-0">
-                    <span className={`text-sm font-bold truncate ${style('text-slate-200', 'text-slate-800')}`}>{tx.description || 'Unknown'}</span>
-                    <span className="text-xs text-slate-500">{new Date(tx.date).toLocaleDateString()}</span>
+          {/* Recent Transactions List */}
+          <div className={`p-4 rounded-[12px] border flex flex-col gap-3 ${
+            isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+          }`}>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[#8B978F]">Recent Activity</h3>
+            <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+              {categoryTxs.slice(0, 10).map((t, i) => (
+                <div key={t.id || i} className="flex items-center justify-between p-2 rounded-[8px] border text-xs bg-black/5 dark:bg-white/5">
+                  <div className="flex flex-col min-w-0 pr-2">
+                    <span className="font-semibold truncate">{t.merchant || t.description}</span>
+                    <span className="text-[10px] text-[#8B978F]">{t.date}</span>
                   </div>
-                  <span className={`text-sm font-black whitespace-nowrap shrink-0 ${parseFloat(tx.amount) > 0 ? 'text-emerald-500' : style('text-slate-300', 'text-slate-700')}`}>
-                    {parseFloat(tx.amount) > 0 ? '+' : '-'}₹{Math.abs(parseFloat(tx.amount)).toLocaleString()}
+                  <span className="font-bold tabular-nums text-[#C85C5C] shrink-0">
+                    ₹{Math.abs(t.amount).toFixed(2)}
                   </span>
                 </div>
               ))}
-              {categoryTxs.length > 50 && (
-                <div className="text-center text-sm text-slate-500 py-4">+ {categoryTxs.length - 50} older transactions</div>
-              )}
             </div>
           </div>
 
         </div>
+
       </div>
     </div>
   );

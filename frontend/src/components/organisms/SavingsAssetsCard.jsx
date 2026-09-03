@@ -3,11 +3,12 @@ import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { formatCurrency, maskAccountNumber } from '../../utils/formatters';
 import { Badge } from '../atoms/Badge';
-import { PiggyBank, Landmark, ArrowDownLeft } from 'lucide-react';
+import { PiggyBank, Landmark } from 'lucide-react';
 
 export const SavingsAssetsCard = () => {
-  const { style } = useTheme();
+  const { theme } = useTheme();
   const { accounts } = useFinance();
+  const isDark = theme === 'dark';
 
   const liquidAccounts = accounts.filter(
     a => (a.subtype === 'SAVINGS' || a.subtype === 'CURRENT') && a.bank?.name !== 'Historical Archive'
@@ -19,26 +20,28 @@ export const SavingsAssetsCard = () => {
   );
 
   return (
-    <div className={`p-6 rounded-2xl border-0 flex flex-col justify-between transition-all duration-300 min-h-[320px] ${style('neu-flat-dark', 'neu-flat-light')}`}>
+    <div className={`p-6 rounded-[16px] border flex flex-col justify-between transition-all duration-150 min-h-[320px] ${
+      isDark ? 'bg-[#171E19] border-[#2A352D] text-[#F1F5F2]' : 'bg-[#FFFFFF] border-[#E4E8E3] text-[#1D2822]'
+    }`}>
       <div>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <PiggyBank className="h-4 w-4 text-emerald-400" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            <PiggyBank className="h-4 w-4 text-[#3F8F5E]" />
+            <h3 className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
               Savings & Liquid Assets
             </h3>
           </div>
-          <Badge variant="success">
+          <Badge variant="verified">
             {liquidAccounts.length} Connected
           </Badge>
         </div>
 
         {liquidAccounts.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-500 italic">
+          <div className={`py-8 text-center text-xs italic ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
             No savings accounts connected yet. Import a statement to link accounts.
           </div>
         ) : (
-          <div className="flex flex-col gap-3 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+          <div className="flex flex-col gap-2 max-h-[200px] overflow-y-auto pr-1">
             {liquidAccounts.map(acc => {
               const bankName = acc.bank?.name || 'Bank';
               const maskedNumber = maskAccountNumber(acc.id ? acc.id.toString().slice(-4) : '7788');
@@ -47,27 +50,29 @@ export const SavingsAssetsCard = () => {
               return (
                 <div 
                   key={acc.id}
-                  className={`p-3 rounded-xl flex items-center justify-between border-0 transition-all ${style('neu-inset-dark', 'neu-inset-light')}`}
+                  className={`p-3 rounded-[10px] border flex items-center justify-between transition-colors ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className={`p-2 rounded-lg shrink-0 ${style('bg-slate-800/40 text-slate-300', 'bg-slate-200 text-slate-700')}`}>
-                      <Landmark className="h-3.5 w-3.5" />
+                    <div className="p-2 rounded-[8px] bg-black/5 dark:bg-white/5 shrink-0">
+                      <Landmark className={`h-3.5 w-3.5 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`} />
                     </div>
                     <div className="flex flex-col min-w-0">
                       <span className="text-xs font-bold truncate">
                         {acc.name}
                       </span>
-                      <span className="text-xs text-slate-400 font-normal truncate">
+                      <span className={`text-[11px] font-medium truncate ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
                         {bankName} ({maskedNumber})
                       </span>
                     </div>
                   </div>
 
                   <div className="flex flex-col items-end">
-                    <span className="text-xs font-bold text-emerald-400 tabular-nums">
+                    <span className="text-xs font-bold text-[#3F8F5E] tabular-nums">
                       {formatCurrency(bal)}
                     </span>
-                    <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                    <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
                       {acc.subtype}
                     </span>
                   </div>
@@ -78,11 +83,11 @@ export const SavingsAssetsCard = () => {
         )}
       </div>
 
-      <div className="mt-4 pt-3 border-t border-slate-800/10 flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+      <div className="mt-4 pt-3 border-t border-[#E4E8E3]/20 flex items-center justify-between">
+        <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
           Total Liquid Assets
         </span>
-        <span className="text-lg font-black text-emerald-400 tabular-nums">
+        <span className="text-base font-bold text-[#3F8F5E] tabular-nums">
           {formatCurrency(totalLiquidAssets)}
         </span>
       </div>

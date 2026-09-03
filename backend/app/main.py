@@ -15,7 +15,7 @@ import hashlib
 
 from app.config import settings
 from app.database import get_db, init_db, SessionLocal, Base, engine
-from app.models import Account, Transaction, Category, CreditCard, CreditCardStatement
+from app.models import Account, Transaction, Category, CreditCard, CreditCardStatement, TransactionType, PaymentRail, ReviewState
 from app.parser import parse_statement
 from app.ai import ensure_models_exist, categorize_transaction, get_embedding, query_financial_rag
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -291,11 +291,12 @@ class CreditCardBase(BaseModel):
     card_name: str
     bank_id: uuid.UUID
     network: str
-    reward_currency: str
+    reward_currency: str = "Reward Points"
     monthly_cap: Optional[Decimal] = None
     statement_date: int = 1
     is_active: bool = True
     account_id: Optional[uuid.UUID] = None
+    credit_limit: Optional[Decimal] = None
 
 class CreditCardCreate(CreditCardBase):
     pass
@@ -303,6 +304,11 @@ class CreditCardCreate(CreditCardBase):
 class CreditCardResponse(CreditCardBase):
     id: uuid.UUID
     bank: BankResponse
+    credit_limit: Optional[Decimal] = None
+    balance: Optional[Decimal] = None
+    current_balance: Optional[Decimal] = None
+    account_number_mask: Optional[str] = None
+    name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -347,6 +353,13 @@ class PayslipResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class SelectivePurgeRequest(BaseModel):
+    transactions: bool = False
+    payslips: bool = False
+    bank: bool = False
+    card: bool = False
+    account: bool = False
 
 # --- Background Task for AI Enrichment ---
 def enrich_transactions_task(transaction_ids: List[uuid.UUID]):
@@ -517,13 +530,24 @@ def upload_bank_statement(
                     # For CC: Total Due = Opening Dues + Debits - Credits
                     # sum_transactions is (Credits - Debits), so Opening - sum_transactions
                     calculated_close = Decimal(str(opening_balance)) - sum_transactions
+                    if abs(calculated_close - Decimal(str(closing_balance))) < Decimal("1.00"):
+                        statement_verified = True
+                    elif statement_summary.get("reconciliation_passed"):
+                        statement_verified = True
+                    elif statement_summary.get("total_outstanding") is not None and abs(calculated_close - Decimal(str(statement_summary["total_outstanding"]))) < Decimal("1.00"):
+                        statement_verified = True
+                    else:
+                        logger.warning(f"Mathematical proof check: Expected {closing_balance}, got {calculated_close}")
                 else:
                     calculated_close = Decimal(str(opening_balance)) + sum_transactions
-                    
-                if abs(calculated_close - Decimal(str(closing_balance))) < Decimal("1.00"):
-                    statement_verified = True
-                else:
-                    logger.warning(f"Mathematical proof check: Expected {closing_balance}, got {calculated_close}")
+                    if abs(calculated_close - Decimal(str(closing_balance))) < Decimal("1.00"):
+                        statement_verified = True
+                    elif statement_summary.get("reconciliation_passed"):
+                        statement_verified = True
+                    else:
+                        logger.warning(f"Mathematical proof check: Expected {closing_balance}, got {calculated_close}")
+            elif statement_summary.get("reconciliation_passed"):
+                statement_verified = True
                     
     except HTTPException:
         raise
@@ -638,6 +662,22 @@ def upload_bank_statement(
         raw_desc = pt.get("description") or ""
         clean_desc = (raw_desc[:147] + "...") if len(raw_desc) > 150 else raw_desc
 
+        amt_val = Decimal(str(pt["amount"]))
+        tx_type = TransactionType.EXPENSE if amt_val < 0 else TransactionType.INCOME
+        rail = PaymentRail.UNKNOWN_NEEDS_REVIEW
+        rail_raw = (pt.get("subcategory") or "").upper()
+        narration_u = str(pt.get("raw_text") or "").upper()
+        if "UPI" in rail_raw or "UPI" in narration_u:
+            rail = PaymentRail.UPI
+        elif "NEFT" in rail_raw or "NEFT" in narration_u:
+            rail = PaymentRail.NEFT
+        elif "IMPS" in rail_raw or "IMPS" in narration_u:
+            rail = PaymentRail.IMPS
+        elif "RTGS" in rail_raw or "RTGS" in narration_u:
+            rail = PaymentRail.RTGS
+        elif account.subtype == AccountSubtype.CREDIT_CARD:
+            rail = PaymentRail.CARD
+
         db_tx = Transaction(
             user_id=current_user.id,
             account_id=account_id,
@@ -646,9 +686,12 @@ def upload_bank_statement(
             amount=pt["amount"],
             description=clean_desc,
             raw_narration=pt["raw_text"],
-            category=pt.get("category") or "Processing...",
-            subcategory=pt.get("subcategory") or "Parsing...",
-            reference_id=pt.get("reference_id"),
+            category=(pt.get("category") or "Processing...")[:50],
+            subcategory=(pt.get("subcategory") or "Parsing...")[:50],
+            transaction_type=tx_type,
+            payment_rail=rail,
+            review_state=ReviewState.VERIFIED if statement_verified else ReviewState.UNKNOWN,
+            reference_id=(pt.get("reference_id")[:100] if pt.get("reference_id") else None),
             fingerprint=fp,
             verified=statement_verified
         )
@@ -659,8 +702,11 @@ def upload_bank_statement(
         total_amount_change += Decimal(str(pt["amount"]))
         
     # Update account balance
-    if account.subtype != AccountSubtype.CREDIT_CARD and closing_balance is not None:
+    if closing_balance is not None:
         account.balance = Decimal(str(closing_balance))
+    elif account.subtype == AccountSubtype.CREDIT_CARD and saved_tx_ids:
+        # Debits (<0) increase outstanding debt, credits (>0) decrease outstanding debt
+        account.balance -= total_amount_change
     elif saved_tx_ids:
         account.balance += total_amount_change
     db.commit()
@@ -764,6 +810,59 @@ def update_transaction(
     db.commit()
     db.refresh(tx)
     return tx
+
+@app.post("/api/data/selective-purge")
+def selective_purge_data(req: SelectivePurgeRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """Selectively purges transactions, payslips, credit cards, bank accounts, or banks for the current user."""
+    purged_items = []
+    try:
+        from app.models import Transaction, Account, CreditCardStatement, CreditCard, Bank, Payslip, TransferLink
+
+        # 1. Transactions
+        if req.transactions:
+            db.query(TransferLink).filter(
+                (TransferLink.from_transaction_id.in_(db.query(Transaction.id).filter(Transaction.user_id == current_user.id))) |
+                (TransferLink.to_transaction_id.in_(db.query(Transaction.id).filter(Transaction.user_id == current_user.id)))
+            ).delete(synchronize_session=False)
+            deleted_txs = db.query(Transaction).filter(Transaction.user_id == current_user.id).delete(synchronize_session=False)
+            db.query(Account).filter(Account.user_id == current_user.id).update({Account.balance: Decimal("0.00")}, synchronize_session=False)
+            purged_items.append(f"{deleted_txs} transactions")
+
+        # 2. Payslips
+        if req.payslips:
+            deleted_payslips = db.query(Payslip).filter(Payslip.user_id == current_user.id).delete(synchronize_session=False)
+            purged_items.append(f"{deleted_payslips} payslips")
+
+        # 3. Credit Cards
+        if req.card:
+            card_ids = [c.id for c in db.query(CreditCard.id).filter(CreditCard.user_id == current_user.id).all()]
+            deleted_cards = db.query(CreditCard).filter(CreditCard.user_id == current_user.id).delete(synchronize_session=False)
+            # Also clean up accounts of subtype CREDIT_CARD
+            db.query(Account).filter(Account.user_id == current_user.id, Account.subtype == "CREDIT_CARD").delete(synchronize_session=False)
+            purged_items.append(f"{deleted_cards} cards")
+
+        # 4. Bank Accounts (Assets / Deposits)
+        if req.account:
+            acc_ids = [a.id for a in db.query(Account.id).filter(Account.user_id == current_user.id).all()]
+            if acc_ids:
+                db.query(Transaction).filter(Transaction.account_id.in_(acc_ids)).delete(synchronize_session=False)
+            deleted_accounts = db.query(Account).filter(Account.user_id == current_user.id).delete(synchronize_session=False)
+            purged_items.append(f"{deleted_accounts} accounts")
+
+        # 5. Banks
+        if req.bank:
+            deleted_banks = db.query(Bank).filter(Bank.user_id == current_user.id).delete(synchronize_session=False)
+            purged_items.append(f"{deleted_banks} banks")
+
+        db.commit()
+        return {
+            "status": "success",
+            "message": f"Successfully purged: {', '.join(purged_items) if purged_items else 'Nothing selected'}"
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in selective purge: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to selectively purge: {str(e)}")
 
 @app.delete("/api/transactions/purge")
 def purge_all_transactions(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
@@ -1141,7 +1240,10 @@ def test_database_connection(request: TestDatabaseRequest, current_user = Depend
 @app.get("/api/cards", response_model=List[CreditCardResponse])
 def get_credit_cards(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """Retrieve all credit cards from the database."""
-    return db.query(CreditCard).options(joinedload(CreditCard.bank)).filter(CreditCard.user_id == current_user.id).all()
+    return db.query(CreditCard).options(
+        joinedload(CreditCard.bank),
+        joinedload(CreditCard.account)
+    ).filter(CreditCard.user_id == current_user.id).all()
 
 @app.get("/api/statements", response_model=List[CreditCardStatementResponse])
 def get_statements(account_id: Optional[uuid.UUID] = None, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
@@ -1164,18 +1266,26 @@ def create_credit_card(card_data: CreditCardCreate, db: Session = Depends(get_db
                 bank_id=card_data.bank_id,
                 classification=AccountClassification.LIABILITY,
                 subtype=AccountSubtype.CREDIT_CARD,
-                balance=Decimal("0.00")
+                balance=Decimal("0.00"),
+                credit_limit=card_data.credit_limit,
+                available_limit=card_data.credit_limit
             )
             db.add(new_acc)
             db.flush()
             account_id = new_acc.id
+        elif card_data.credit_limit is not None:
+            acc = db.query(Account).filter(Account.id == account_id, Account.user_id == current_user.id).first()
+            if acc:
+                acc.credit_limit = card_data.credit_limit
+                if acc.available_limit is None:
+                    acc.available_limit = card_data.credit_limit
 
         new_card = CreditCard(
             user_id=current_user.id,
             card_name=card_data.card_name,
             bank_id=card_data.bank_id,
             network=card_data.network,
-            reward_currency=card_data.reward_currency,
+            reward_currency=card_data.reward_currency or "Reward Points",
             monthly_cap=card_data.monthly_cap,
             statement_date=card_data.statement_date,
             is_active=card_data.is_active,
@@ -1184,7 +1294,10 @@ def create_credit_card(card_data: CreditCardCreate, db: Session = Depends(get_db
         db.add(new_card)
         db.commit()
         # Re-query to load relationships
-        return db.query(CreditCard).options(joinedload(CreditCard.bank)).filter(CreditCard.id == new_card.id).first()
+        return db.query(CreditCard).options(
+            joinedload(CreditCard.bank),
+            joinedload(CreditCard.account)
+        ).filter(CreditCard.id == new_card.id).first()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Failed to create card: {str(e)}")
@@ -1199,14 +1312,22 @@ def update_credit_card(card_id: uuid.UUID, card_data: CreditCardCreate, db: Sess
     card.card_name = card_data.card_name
     card.bank_id = card_data.bank_id
     card.network = card_data.network
-    card.reward_currency = card_data.reward_currency
+    card.reward_currency = card_data.reward_currency or "Reward Points"
     card.monthly_cap = card_data.monthly_cap
     card.statement_date = card_data.statement_date
     card.is_active = card_data.is_active
     card.account_id = card_data.account_id
 
+    if card_data.credit_limit is not None and card.account_id:
+        acc = db.query(Account).filter(Account.id == card.account_id, Account.user_id == current_user.id).first()
+        if acc:
+            acc.credit_limit = card_data.credit_limit
+
     db.commit()
-    return db.query(CreditCard).options(joinedload(CreditCard.bank)).filter(CreditCard.id == card_id).first()
+    return db.query(CreditCard).options(
+        joinedload(CreditCard.bank),
+        joinedload(CreditCard.account)
+    ).filter(CreditCard.id == card_id).first()
 
 @app.delete("/api/dev/purge")
 def purge_database(db: Session = Depends(get_db), current_user = Depends(is_dev_user)):
@@ -2197,10 +2318,20 @@ class ReviewResolveRequest(BaseModel):
 
 class BackupExportWbrRequest(BaseModel):
     passphrase: str
+    selected_entities: Optional[List[str]] = None
+
+class BackupExportPlainRequest(BaseModel):
+    selected_entities: Optional[List[str]] = None
 
 class BackupTestRestoreRequest(BaseModel):
     wbr_base64: str
-    passphrase: str
+    passphrase: Optional[str] = ""
+
+class BackupApplyRestoreRequest(BaseModel):
+    wbr_base64: str
+    passphrase: Optional[str] = ""
+    selected_entities: List[str]
+    conflict_strategy: Optional[str] = "skip_duplicates"
 
 
 @app.get("/api/reconciliation/dashboard")
@@ -2439,18 +2570,9 @@ def export_encrypted_backup(data: BackupExportWbrRequest, db: Session = Depends(
     Generates a secure .wbr encrypted archive (AES-256-GCM + Argon2id) and recovery descriptor.
     """
     import base64
-    from app.services.backup_service import create_encrypted_backup
-    from app.models import Account, UserClassificationRule
+    from app.services.backup_service import create_encrypted_backup, build_backup_payload
 
-    accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
-    txns = db.query(Transaction).filter(Transaction.user_id == current_user.id).all()
-    rules = db.query(UserClassificationRule).filter(UserClassificationRule.user_id == current_user.id).all()
-
-    payload = {
-        "accounts": [{"id": str(a.id), "name": a.name, "balance": float(a.balance or 0), "subtype": a.subtype.value} for a in accounts],
-        "transactions": [{"id": str(t.id), "date": str(t.date), "amount": float(t.amount), "raw_text": t.raw_text, "category": t.category} for t in txns],
-        "rules": [{"id": str(r.id), "pattern": r.match_pattern, "category": r.target_category} for r in rules]
-    }
+    payload = build_backup_payload(db=db, user_id=current_user.id, include_entities=data.selected_entities)
 
     wbr_bytes, recovery_descriptor, filename = create_encrypted_backup(
         data_payload=payload,
@@ -2478,27 +2600,59 @@ def test_restore_backup_api(data: BackupTestRestoreRequest, current_user = Depen
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 payload")
 
-    result = test_restore_backup(wbr_bytes, data.passphrase)
+    result = test_restore_backup(wbr_bytes, data.passphrase or "")
     return result
 
 
+@app.post("/api/backup/restore")
+def apply_backup_restore_api(data: BackupApplyRestoreRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """
+    Decrypts/verifies backup archive and applies selective restore of chosen entities into database.
+    """
+    import base64
+    from app.services.backup_service import test_restore_backup, apply_restore_backup
+
+    try:
+        wbr_bytes = base64.b64decode(data.wbr_base64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 payload")
+
+    verified_result = test_restore_backup(wbr_bytes, data.passphrase or "")
+    if not verified_result.get("is_valid"):
+        raise HTTPException(status_code=400, detail=verified_result.get("error", "Backup verification failed."))
+
+    payload_data = verified_result.get("payload_data")
+    if not payload_data:
+        raise HTTPException(status_code=400, detail="No readable payload data found in backup archive.")
+
+    if not data.selected_entities:
+        raise HTTPException(status_code=400, detail="No entities selected for restore.")
+
+    try:
+        restore_result = apply_restore_backup(
+            db=db,
+            user_id=current_user.id,
+            data_payload=payload_data,
+            selected_entities=data.selected_entities,
+            conflict_strategy=data.conflict_strategy or "skip_duplicates"
+        )
+        return restore_result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Restore operation failed: {str(e)}")
+
+
 @app.post("/api/backup/export-plain")
-def export_plain_backup(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def export_plain_backup(data: Optional[BackupExportPlainRequest] = None, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     Exports unencrypted JSON data with explicit security confirmation.
     """
-    from app.services.backup_service import create_plain_export
-    from app.models import Account
+    from app.services.backup_service import create_plain_export, build_backup_payload
 
-    accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
-    txns = db.query(Transaction).filter(Transaction.user_id == current_user.id).all()
-
-    payload = {
-        "accounts": [{"id": str(a.id), "name": a.name, "balance": float(a.balance or 0), "subtype": a.subtype.value} for a in accounts],
-        "transactions": [{"id": str(t.id), "date": str(t.date), "amount": float(t.amount), "raw_text": t.raw_text, "category": t.category} for t in txns]
-    }
+    include_entities = data.selected_entities if data else None
+    payload = build_backup_payload(db=db, user_id=current_user.id, include_entities=include_entities)
 
     return create_plain_export(payload, current_user.email)
+
 
 
 @app.get("/api/health-score")

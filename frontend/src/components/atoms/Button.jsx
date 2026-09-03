@@ -13,53 +13,55 @@ export const Button = ({
   className = '',
   icon: Icon
 }) => {
-  const { style } = useTheme();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   const getVariantClasses = () => {
     switch (variant) {
       case 'primary':
-        return style(
-          'neu-btn-dark text-[#5EEAD4] font-bold hover:brightness-110 active:brightness-95',
-          'bg-[#5EEAD4] text-[#0A0E14]',
-          'neu-btn-light text-[#0F766E] font-bold hover:brightness-105 active:brightness-95',
-          'bg-[#0F766E] text-white'
-        );
-      case 'ai':
-        return style(
-          'neu-btn-dark text-[#A78BFA] font-bold hover:brightness-110 active:brightness-95',
-          'bg-[#A78BFA] text-[#0A0E14]',
-          'neu-btn-light text-[#7C3AED] font-bold hover:brightness-105 active:brightness-95',
-          'bg-[#7C3AED] text-white'
-        );
+        return 'bg-[#3F8F5E] text-white hover:bg-[#327349] active:bg-[#285A3A] font-semibold shadow-xs';
+      case 'brand':
+      case 'green':
+        return 'bg-[#5BAE78] text-white hover:bg-[#3F8F5E] active:bg-[#327349] font-semibold shadow-xs';
+      case 'brown':
+      case 'earth':
+        return isDark
+          ? 'bg-[#875F43] text-white hover:bg-[#694A36] font-semibold'
+          : 'bg-[#A77B58] text-white hover:bg-[#875F43] font-semibold';
       case 'secondary':
-        return style(
-          'neu-btn-dark text-slate-300 font-medium',
-          'bg-[#19202A] text-slate-200',
-          'neu-btn-light text-slate-700 font-medium',
-          'bg-slate-200 text-slate-700'
-        );
-      case 'danger':
-        return style(
-          'neu-btn-dark text-red-400 font-bold hover:text-red-300',
-          'bg-red-600 text-white',
-          'neu-btn-light text-red-500 font-bold hover:text-red-600',
-          'bg-red-500 text-white'
-        );
+        return isDark
+          ? 'bg-[#1C251F] text-[#F1F5F2] border border-[#2A352D] hover:bg-[#253229]'
+          : 'bg-[#FBFCFA] text-[#1D2822] border border-[#E4E8E3] hover:bg-[#F1F8F4] hover:border-[#C6E4D2]';
+      case 'tertiary':
       case 'ghost':
-        return 'bg-transparent text-slate-400 hover:text-slate-200 border-0';
+        return isDark
+          ? 'bg-transparent text-[#C2CCC5] hover:text-[#5BAE78] hover:bg-[#1C251F]'
+          : 'bg-transparent text-[#4F5D55] hover:text-[#3F8F5E] hover:bg-[#F1F8F4]';
+      case 'ai':
+        return isDark
+          ? 'bg-[rgba(138,120,168,0.2)] text-[#C5B5DD] border border-[#8A78A8]/40 hover:bg-[rgba(138,120,168,0.3)]'
+          : 'bg-[#F0ECF5] text-[#6E5A8D] border border-[#8A78A8]/30 hover:bg-[#E7E0EF]';
+      case 'danger':
+        return isDark
+          ? 'bg-[rgba(200,92,92,0.18)] text-[#E58585] border border-[#C85C5C]/40 hover:bg-[#C85C5C] hover:text-white'
+          : 'bg-[#FBEAEA] text-[#C85C5C] border border-[#C85C5C]/30 hover:bg-[#C85C5C] hover:text-white';
       default:
-        return style('neu-btn-dark text-slate-300', 'neu-btn-light text-slate-700');
+        return isDark
+          ? 'bg-[#1C251F] text-[#F1F5F2] border border-[#2A352D] hover:bg-[#253229]'
+          : 'bg-[#FBFCFA] text-[#1D2822] border border-[#E4E8E3] hover:bg-[#F1F8F4]';
     }
   };
 
   const getSizeClasses = () => {
     switch (size) {
+      case 'xs':
+        return 'px-2.5 py-1 text-[11px] rounded-[8px]';
       case 'sm':
-        return 'px-3 py-1.5 text-xxs rounded-xl';
+        return 'px-3 py-1.5 text-xs rounded-[10px]';
       case 'lg':
-        return 'px-6 py-3 text-sm rounded-2xl';
+        return 'px-5 py-2.5 text-sm font-medium rounded-[12px]';
       default:
-        return 'px-4 py-2 text-xs rounded-xl';
+        return 'px-3.5 py-2 text-xs font-medium rounded-[10px]';
     }
   };
 
@@ -68,7 +70,7 @@ export const Button = ({
       type={type}
       onClick={onClick}
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center gap-1.5 transition-all border-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${getVariantClasses()} ${getSizeClasses()} ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 transition-all duration-150 border-0 cursor-pointer select-none disabled:opacity-40 disabled:cursor-not-allowed ${getVariantClasses()} ${getSizeClasses()} ${className}`}
     >
       {loading ? (
         <Loader2 className="h-3.5 w-3.5 animate-spin" />

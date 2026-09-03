@@ -4,25 +4,23 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { toLocalDateKey } from '../../utils/formatters';
 
 export const CalendarHeatmap = ({ transactions, onDayClick }) => {
-  const { theme, style } = useTheme();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   const { heatmapData, maxValue } = useMemo(() => {
     if (!transactions) return { heatmapData: [], maxValue: 0 };
     
-    // We want the last 364 days (52 weeks * 7 days)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const startDate = new Date(today);
     startDate.setDate(today.getDate() - 364);
 
     const dataMap = new Map();
-    // Initialize 365 days with 0
     for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
       const dateStr = toLocalDateKey(d);
       dataMap.set(dateStr, 0);
     }
 
-    // Accumulate negative amounts (outflows)
     let maxSpend = 0;
     transactions.forEach(tx => {
       const amt = parseFloat(tx.amount);
@@ -41,15 +39,14 @@ export const CalendarHeatmap = ({ transactions, onDayClick }) => {
   }, [transactions]);
 
   const getColor = (val) => {
-    if (val === 0) return theme === 'dark' ? 'bg-[#19202A]' : 'bg-slate-100';
+    if (val === 0) return isDark ? 'bg-white/5' : 'bg-black/5';
     const ratio = val / maxValue;
-    if (ratio < 0.1) return theme === 'dark' ? 'bg-[#3b1c1c]' : 'bg-rose-200';
-    if (ratio < 0.3) return theme === 'dark' ? 'bg-[#662020]' : 'bg-rose-300';
-    if (ratio < 0.6) return theme === 'dark' ? 'bg-[#a32a2a]' : 'bg-rose-400';
-    return theme === 'dark' ? 'bg-[#F87171]' : 'bg-rose-600';
+    if (ratio < 0.15) return isDark ? 'bg-[#A77B58]/30' : 'bg-[#E5D4C1]';
+    if (ratio < 0.4) return isDark ? 'bg-[#A77B58]/60' : 'bg-[#D5B99D]';
+    if (ratio < 0.7) return isDark ? 'bg-[#C85C5C]/60' : 'bg-[#FBEAEA]';
+    return isDark ? 'bg-[#C85C5C]' : 'bg-[#C85C5C]';
   };
 
-  // Group into weeks for rendering columns
   const weeks = [];
   let currentWeek = [];
   if (heatmapData.length > 0) {
@@ -59,19 +56,22 @@ export const CalendarHeatmap = ({ transactions, onDayClick }) => {
       currentWeek.push({ date: `pad-${i}`, val: null });
     }
   }
-  heatmapData.forEach((day, idx) => {
+
+  heatmapData.forEach(day => {
     currentWeek.push(day);
-    if (currentWeek.length === 7 || idx === heatmapData.length - 1) {
+    if (currentWeek.length === 7) {
       weeks.push(currentWeek);
       currentWeek = [];
     }
   });
 
   return (
-    <div className={`p-6 rounded-2xl flex flex-col gap-4 border-0 ${style('neu-flat-dark', 'neu-flat-light')}`}>
+    <div className={`p-5 rounded-[14px] border flex flex-col gap-3.5 ${
+      isDark ? 'bg-[#171E19] border-[#2A352D] text-[#F1F5F2]' : 'bg-[#FFFFFF] border-[#E4E8E3] text-[#1D2822]'
+    }`}>
       <div className="flex items-center gap-2">
-        <CalendarIcon className="h-4 w-4 text-slate-400" />
-        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Spend Intensity (Last 365 Days)</h3>
+        <CalendarIcon className="h-4 w-4 text-[#3F8F5E]" />
+        <h3 className="text-xs font-bold uppercase tracking-wider text-[#8B978F]">Spend Intensity (Last 365 Days)</h3>
       </div>
       <div className="flex-1 w-full overflow-x-auto pb-2">
         <div className="flex gap-1 min-w-max">
@@ -85,7 +85,7 @@ export const CalendarHeatmap = ({ transactions, onDayClick }) => {
                     if (day.val == null || !onDayClick) return;
                     onDayClick(day.date);
                   }}
-                  className={`w-3 h-3 rounded-sm ${day.val == null ? 'bg-transparent' : getColor(day.val)} transition-colors duration-200 hover:opacity-80 ${onDayClick && day.val != null ? 'cursor-pointer' : ''}`}
+                  className={`w-3 h-3 rounded-[2px] ${day.val == null ? 'bg-transparent' : getColor(day.val)} transition-colors duration-150 hover:opacity-80 ${onDayClick && day.val != null ? 'cursor-pointer' : ''}`}
                   title={day.val == null ? undefined : `${day.date}: ₹${day.val.toFixed(0)}${onDayClick ? ' — click to open ledger' : ''}`}
                 />
               ))}
@@ -93,12 +93,12 @@ export const CalendarHeatmap = ({ transactions, onDayClick }) => {
           ))}
         </div>
       </div>
-      <div className="flex items-center justify-end gap-2 text-xs text-slate-500 mt-2">
+      <div className="flex items-center justify-end gap-2 text-[11px] text-[#8B978F] mt-1">
         <span>Less</span>
-        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#19202A]' : 'bg-slate-100'}`}></div>
-        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#3b1c1c]' : 'bg-rose-200'}`}></div>
-        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#a32a2a]' : 'bg-rose-400'}`}></div>
-        <div className={`w-3 h-3 rounded-sm ${theme === 'dark' ? 'bg-[#F87171]' : 'bg-rose-600'}`}></div>
+        <div className={`w-2.5 h-2.5 rounded-[2px] ${isDark ? 'bg-white/5' : 'bg-black/5'}`}></div>
+        <div className={`w-2.5 h-2.5 rounded-[2px] ${isDark ? 'bg-[#A77B58]/30' : 'bg-[#E5D4C1]'}`}></div>
+        <div className={`w-2.5 h-2.5 rounded-[2px] ${isDark ? 'bg-[#A77B58]/60' : 'bg-[#D5B99D]'}`}></div>
+        <div className={`w-2.5 h-2.5 rounded-[2px] ${isDark ? 'bg-[#C85C5C]' : 'bg-[#C85C5C]'}`}></div>
         <span>More</span>
       </div>
     </div>
