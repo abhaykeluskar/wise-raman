@@ -76,6 +76,23 @@ export const AiAssistantView = () => {
     return { income: inc, spending: sp, remaining, rate };
   }, [transactions]);
 
+  // Load active LLM settings from backend on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const res = await authFetch('/api/settings/llm');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ollama_url) setOllamaUrl(data.ollama_url);
+          if (data.llm_model) setModelName(data.llm_model);
+        }
+      } catch (err) {
+        console.warn('Could not load LLM settings:', err);
+      }
+    };
+    loadSettings();
+  }, [authFetch]);
+
   // Test Ollama endpoint
   const handleTestOllama = async () => {
     setTesting(true);
@@ -84,11 +101,16 @@ export const AiAssistantView = () => {
       const res = await authFetch('/api/settings/test-ollama', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base_url: ollamaUrl, model: modelName })
+        body: JSON.stringify({ url: ollamaUrl, base_url: ollamaUrl, model: modelName })
       });
       if (res.ok) {
         const data = await res.json();
-        setTestStatus({ ok: true, msg: `Connected! Available models: ${(data.models || [modelName]).join(', ')}` });
+        if (data.status === 'success') {
+          setTestStatus({ ok: true, msg: data.message || `Connected! Available models: ${(data.models || [modelName]).join(', ')}` });
+          if (data.active_url) setOllamaUrl(data.active_url);
+        } else {
+          setTestStatus({ ok: false, msg: data.message || 'Could not connect. Using local deterministic calculation fallback.' });
+        }
       } else {
         setTestStatus({ ok: false, msg: 'Could not connect. Using local deterministic calculation fallback.' });
       }
@@ -97,6 +119,19 @@ export const AiAssistantView = () => {
     } finally {
       setTesting(false);
     }
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      await authFetch('/api/settings/llm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ollama_url: ollamaUrl, llm_model: modelName })
+      });
+    } catch (e) {
+      console.error('Failed to save settings:', e);
+    }
+    setShowConfigModal(false);
   };
 
   const handleSend = async (e) => {
@@ -380,7 +415,7 @@ export const AiAssistantView = () => {
             </div>
 
             <div className="pt-4 border-t border-[#E4E8E3]/20 mt-4 flex justify-end">
-              <Button variant="primary" size="sm" onClick={() => setShowConfigModal(false)}>
+              <Button variant="primary" size="sm" onClick={handleSaveSettings}>
                 Save Settings
               </Button>
             </div>

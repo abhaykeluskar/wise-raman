@@ -17,7 +17,7 @@ from app.config import settings
 from app.database import get_db, init_db, SessionLocal, Base, engine
 from app.models import Account, Transaction, Category, CreditCard, CreditCardStatement, TransactionType, PaymentRail, ReviewState
 from app.parser import parse_statement
-from app.ai import ensure_models_exist, categorize_transaction, get_embedding, query_financial_rag
+from app.ai import ensure_models_exist, categorize_transaction, get_embedding, query_financial_rag, is_safe_ollama_url, find_working_ollama_url
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
 from jose import JWTError, jwt
@@ -1260,6 +1260,8 @@ def update_llm_settings(req: LlmSettingsRequest, current_user = Depends(get_curr
 
 class TestOllamaRequest(BaseModel):
     url: Optional[str] = None
+    base_url: Optional[str] = None
+    model: Optional[str] = None
 
 class TestDatabaseRequest(BaseModel):
     conn_string: str
@@ -1268,49 +1270,46 @@ class TestDatabaseRequest(BaseModel):
 def test_ollama_connection(request: TestOllamaRequest, current_user = Depends(get_current_user)):
     """Test if we can connect to the local Ollama endpoint and check active models."""
     import requests
-    from app.ai import find_working_ollama_url
+    from app.ai import find_working_ollama_url, is_safe_ollama_url
 
-    url = (request.url or "").strip().rstrip('/')
+    raw_url = request.url or request.base_url or ""
+    url = raw_url.strip().rstrip('/')
     if not url:
         url = find_working_ollama_url()
 
-    if not is_safe_ollama_url(url):
-        return {
-            "status": "error",
-            "message": "Only local Ollama hosts are allowed (localhost, ollama, finance_ollama, host.docker.internal).",
-        }
-    try:
-        response = requests.get(f"{url}/api/tags", timeout=3)
-        if response.status_code == 200:
-            data = response.json()
-            models = [m.get("name") for m in data.get("models", [])]
-            # Update working URL in settings
-            settings.OLLAMA_URL = url
-            return {
-                "status": "success",
-                "models": models,
-                "message": f"Connected successfully! Available models: {', '.join(models) or 'none'}",
-            }
-        return {"status": "error", "message": f"Server responded with status code: {response.status_code}"}
-    except Exception as e:
-        logger.error(f"Error testing Ollama connection: {str(e)}")
-        # Try fallback
-        fallback = find_working_ollama_url()
-        if fallback and fallback != url:
-            try:
-                response = requests.get(f"{fallback}/api/tags", timeout=3)
-                if response.status_code == 200:
-                    data = response.json()
-                    models = [m.get("name") for m in data.get("models", [])]
-                    settings.OLLAMA_URL = fallback
-                    return {
-                        "status": "success",
-                        "models": models,
-                        "message": f"Auto-connected to Ollama at {fallback}! Models: {', '.join(models) or 'none'}",
-                    }
-            except Exception:
-                pass
-        return {"status": "error", "message": f"Failed to connect to Ollama at {url}."}
+    # Candidate URLs to try: requested url, then auto-detected fallbacks
+    candidates = [url]
+    active_fallback = find_working_ollama_url()
+    if active_fallback and active_fallback not in candidates:
+        candidates.append(active_fallback)
+    for c in ["http://finance_ollama:11434", "http://ollama:11434", "http://host.docker.internal:11434", "http://localhost:11434"]:
+        if c not in candidates:
+            candidates.append(c)
+
+    last_err = None
+    for candidate in candidates:
+        if not is_safe_ollama_url(candidate):
+            continue
+        try:
+            response = requests.get(f"{candidate}/api/tags", timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                models = [m.get("name") for m in data.get("models", [])]
+                settings.OLLAMA_URL = candidate
+                return {
+                    "status": "success",
+                    "models": models,
+                    "active_url": candidate,
+                    "message": f"Connected successfully! Available models: {', '.join(models) or 'none'}",
+                }
+        except Exception as err:
+            last_err = err
+            continue
+
+    return {
+        "status": "error",
+        "message": f"Failed to connect to Ollama at {url}. Ensure Ollama is running.",
+    }
 
 @app.post("/api/settings/test-db")
 def test_database_connection(request: TestDatabaseRequest, current_user = Depends(get_current_user)):
