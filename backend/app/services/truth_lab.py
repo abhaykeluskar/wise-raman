@@ -34,14 +34,24 @@ def get_dev_health_summary(db: Session, user_id: str) -> Dict[str, Any]:
     """
     Computes real-time health score & status across 6 architectural pillars.
     """
-    txns = db.query(Transaction).filter(Transaction.user_id == user_id).all()
-    events = db.query(FinancialEvent).filter(FinancialEvent.user_id == user_id).all()
-    accounts = db.query(Account).filter(Account.user_id == user_id).all()
-    sources = db.query(DocumentSource).filter(DocumentSource.user_id == user_id).all()
-
-    total_txns = len(txns)
-    validated_txns = sum(1 for t in txns if t.verified or t.review_state in [ReviewState.VERIFIED, ReviewState.USER_CONFIRMED, ReviewState.AUTO_RESOLVED])
-    review_txns = sum(1 for t in txns if t.review_state in [ReviewState.NEEDS_REVIEW, ReviewState.UNKNOWN] or not t.verified)
+    total_txns = db.query(func.count(Transaction.id)).filter(Transaction.user_id == user_id).scalar() or 0
+    validated_txns = db.query(func.count(Transaction.id)).filter(
+        Transaction.user_id == user_id,
+        or_(
+            Transaction.verified == True,
+            Transaction.review_state.in_([ReviewState.VERIFIED, ReviewState.USER_CONFIRMED, ReviewState.AUTO_RESOLVED])
+        )
+    ).scalar() or 0
+    review_txns = db.query(func.count(Transaction.id)).filter(
+        Transaction.user_id == user_id,
+        or_(
+            Transaction.review_state.in_([ReviewState.NEEDS_REVIEW, ReviewState.UNKNOWN]),
+            Transaction.verified == False
+        )
+    ).scalar() or 0
+    total_events = db.query(func.count(FinancialEvent.id)).filter(FinancialEvent.user_id == user_id).scalar() or 0
+    total_accounts = db.query(func.count(Account.id)).filter(Account.user_id == user_id).scalar() or 0
+    total_sources = db.query(func.count(DocumentSource.id)).filter(DocumentSource.user_id == user_id).scalar() or 0
     
     # Invariant checks
     invariants = validate_all_invariants(db, user_id)
@@ -55,11 +65,11 @@ def get_dev_health_summary(db: Session, user_id: str) -> Dict[str, Any]:
             "total_transactions": total_txns,
             "validated_transactions": validated_txns,
             "reconciled_percentage": reconciled_pct,
-            "total_events": len(events),
+            "total_events": total_events,
             "needs_review_count": review_txns,
             "invariant_errors_count": error_count,
-            "total_accounts": len(accounts),
-            "total_document_sources": len(sources)
+            "total_accounts": total_accounts,
+            "total_document_sources": total_sources
         },
         "domain_laws": {
             "financial_events_enforced": True,
@@ -374,7 +384,7 @@ def validate_all_invariants(db: Session, user_id: str) -> Dict[str, Any]:
     accounts = db.query(Account).filter(Account.user_id == user_id).all()
     all_txns = db.query(Transaction).filter(Transaction.user_id == user_id).all()
     all_events = db.query(FinancialEvent).filter(FinancialEvent.user_id == user_id).all()
-    transfer_links = db.query(TransferLink).all()
+    transfer_links = db.query(TransferLink).filter(TransferLink.user_id == user_id).all()
 
     invariants = []
 
