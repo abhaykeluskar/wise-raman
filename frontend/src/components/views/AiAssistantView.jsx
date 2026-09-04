@@ -34,27 +34,10 @@ export const AiAssistantView = () => {
   const [testing, setTesting] = useState(false);
 
   // Chat Messages
-  const [messages, setMessages] = useState([
-    {
-      id: 'm1',
-      role: 'user',
-      content: 'Where did I spend the most this month?'
-    },
-    {
-      id: 'm2',
-      role: 'assistant',
-      content: 'You spent the most on Food & Dining. ₹18,230 was debited across 47 transactions. Your largest merchants were Zomato (₹4,681), Swiggy (₹3,892), and Cafe Coffee Day (₹1,240).',
-      evidence: {
-        calculation: 'Deterministic sum of transactions where category == "Food & Dining" and date between 2026-08-01 and 2026-08-31',
-        total: 18230,
-        txCount: 47,
-        sources: ['SBI Savings Account', 'Axis Airtel Credit Card']
-      }
-    }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [expandedEvidence, setExpandedEvidence] = useState({ m2: false });
+  const [expandedEvidence, setExpandedEvidence] = useState({});
   const messagesEndRef = useRef(null);
 
   // Context strip metrics
@@ -69,10 +52,10 @@ export const AiAssistantView = () => {
         spending += Math.abs(amt);
       }
     });
-    const inc = income > 0 ? income : 124500;
-    const sp = spending > 0 ? spending : 58742;
+    const inc = income;
+    const sp = spending;
     const remaining = Math.max(0, inc - sp);
-    const rate = inc > 0 ? ((remaining / inc) * 100).toFixed(1) : '52.8';
+    const rate = inc > 0 ? ((remaining / inc) * 100).toFixed(1) : '0.0';
     return { income: inc, spending: sp, remaining, rate };
   }, [transactions]);
 
@@ -256,7 +239,18 @@ export const AiAssistantView = () => {
       }`}>
         {/* Message Thread */}
         <div className="p-6 space-y-6 overflow-y-auto max-h-[500px]">
-          {messages.map(msg => {
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center text-[#8B978F]">
+              <div className={`p-3 rounded-full mb-3 ${isDark ? 'bg-[#1C251F]' : 'bg-[#F1F8F4]'}`}>
+                <Cpu className="h-6 w-6 text-[#3F8F5E]" />
+              </div>
+              <div className={`text-sm font-bold ${isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'}`}>Private Financial Copilot</div>
+              <p className="text-xs max-w-sm mt-1">
+                Ask anything about your account balances, recent spending, monthly savings rate, or debt commitments.
+              </p>
+            </div>
+          ) : (
+            messages.map(msg => {
             const isUser = msg.role === 'user';
             const isEvidenceOpen = expandedEvidence[msg.id];
 
@@ -304,7 +298,7 @@ export const AiAssistantView = () => {
                 </div>
               </div>
             );
-          })}
+          }))}
           <div ref={messagesEndRef} />
         </div>
 

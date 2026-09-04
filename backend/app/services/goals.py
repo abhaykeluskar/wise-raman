@@ -54,8 +54,8 @@ def calculate_emergency_fund_assessment(db: Session, user_id: str) -> Dict[str, 
         Transaction.category.in_(ESSENTIAL_CATEGORIES)
     ).scalar() or Decimal("0.0")
 
-    # If user has transaction history, use monthly average (divide by 3 if 90 days), else baseline
-    est_monthly_essential = abs(Decimal(str(essential_txns))) / Decimal("3") if abs(essential_txns) > 0 else Decimal("40000.00")
+    # If user has transaction history, use monthly average (divide by 3 if 90 days), else 0.00
+    est_monthly_essential = abs(Decimal(str(essential_txns))) / Decimal("3") if abs(essential_txns) > 0 else Decimal("0.00")
     total_monthly_burn = est_monthly_essential + monthly_emi_total
 
     if total_monthly_burn > 0:

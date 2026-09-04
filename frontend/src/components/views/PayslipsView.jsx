@@ -198,9 +198,9 @@ export const PayslipsView = () => {
   };
 
   const maskAccountNumber = (acc) => {
-    if (!acc) return '';
-    const str = String(acc);
-    return str.length > 4 ? `•••• •••• ${str.slice(-4)}` : str;
+    if (!acc) return '-';
+    const str = String(acc).trim();
+    return str.length > 4 ? `•••• •••• ${str.slice(-4)}` : (str || '-');
   };
 
   return (
@@ -502,8 +502,8 @@ export const PayslipsView = () => {
                   const grossNum = parseFloat(p.gross_earnings) || 0;
                   const netNum = parseFloat(p.net_pay) || 0;
                   const deductionsNum = parseFloat(p.gross_deductions) || 0;
-                  const takeHomePct = grossNum > 0 ? ((netNum / grossNum) * 100).toFixed(1) : '100.0';
-                  const deductionPct = grossNum > 0 ? ((deductionsNum / grossNum) * 100).toFixed(1) : '0.0';
+                  const takeHomePct = grossNum > 0 ? ((netNum / grossNum) * 100).toFixed(1) : '0';
+                  const deductionPct = grossNum > 0 ? ((deductionsNum / grossNum) * 100).toFixed(1) : '0';
                   const monthName = MONTH_NAMES[p.period_month - 1] || `Month ${p.period_month}`;
 
                   return (
@@ -527,7 +527,7 @@ export const PayslipsView = () => {
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="font-bold text-xs tracking-tight">
-                                {p.company_name || 'Employer'}
+                                {p.company_name || '-'}
                               </h4>
                               <span className="text-xs text-[#8B978F]">
                                 · {monthName} {p.period_year}
@@ -585,15 +585,15 @@ export const PayslipsView = () => {
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                               <div>
                                 <span className="text-[#8B978F] text-[10px] block">Employee Name</span>
-                                <strong className="text-foreground">{p.employee_name || 'Not specified'}</strong>
+                                <strong className="text-foreground">{p.employee_name || '-'}</strong>
                               </div>
                               <div>
                                 <span className="text-[#8B978F] text-[10px] block">Employee ID</span>
-                                <strong className="text-foreground">{p.employee_id || 'Not specified'}</strong>
+                                <strong className="text-foreground">{p.employee_id || '-'}</strong>
                               </div>
                               <div>
                                 <span className="text-[#8B978F] text-[10px] block">Bank Account</span>
-                                <strong className="text-foreground">{p.bank_account_no ? maskAccountNumber(p.bank_account_no) : 'Not specified'}</strong>
+                                <strong className="text-foreground">{p.bank_account_no ? maskAccountNumber(p.bank_account_no) : '-'}</strong>
                               </div>
                               <div>
                                 <span className="text-[#8B978F] text-[10px] block">Ledger Verification</span>

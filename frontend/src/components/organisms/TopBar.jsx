@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { Button } from '../atoms/Button';
@@ -21,7 +21,7 @@ export const TopBar = ({
   activeTab,
   onOpenUploadModal,
   onOpenSearch,
-  selectedPeriod = 'August 2026',
+  selectedPeriod,
   onPeriodChange
 }) => {
   const { theme, setTheme } = useTheme();
@@ -31,14 +31,18 @@ export const TopBar = ({
   const [profileOpen, setProfileOpen] = useState(false);
   const [periodOpen, setPeriodOpen] = useState(false);
 
-  const availablePeriods = [
-    'August 2026',
-    'July 2026',
-    'June 2026',
-    'May 2026',
-    'April 2026',
-    'All Time'
-  ];
+  const availablePeriods = useMemo(() => {
+    const periods = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      periods.push(d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+    }
+    periods.push('All Time');
+    return periods;
+  }, []);
+
+  const currentPeriod = selectedPeriod || availablePeriods[0];
 
   const getTitle = () => {
     switch (activeTab) {
@@ -116,7 +120,7 @@ export const TopBar = ({
             }`}
           >
             <Calendar className="h-3.5 w-3.5 text-[#5BAE78]" />
-            <span>{selectedPeriod}</span>
+            <span>{currentPeriod}</span>
             <ChevronDown className="h-3 w-3 text-[#8B978F]" />
           </button>
 
@@ -137,13 +141,13 @@ export const TopBar = ({
                       setPeriodOpen(false);
                     }}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-[8px] text-xs text-left cursor-pointer border-0 transition-colors ${
-                      selectedPeriod === p
+                      currentPeriod === p
                         ? isDark ? 'bg-[#1C251F] text-[#7FC39A] font-semibold' : 'bg-[#F1F8F4] text-[#285A3A] font-semibold'
                         : isDark ? 'hover:bg-[#1C251F] text-[#C2CCC5]' : 'hover:bg-[#FBFCFA] text-[#4F5D55]'
                     }`}
                   >
                     <span>{p}</span>
-                    {selectedPeriod === p && <Check className="h-3 w-3 text-[#3F8F5E]" />}
+                    {currentPeriod === p && <Check className="h-3 w-3 text-[#3F8F5E]" />}
                   </button>
                 ))}
               </div>
@@ -183,7 +187,7 @@ export const TopBar = ({
             aria-label="User profile menu"
           >
             <div className="h-6 w-6 rounded-full bg-[#3F8F5E] text-white flex items-center justify-center text-[10px] font-bold">
-              {user?.email ? user.email.charAt(0).toUpperCase() : 'A'}
+              {(user?.name || user?.email || '-').charAt(0).toUpperCase()}
             </div>
             <ChevronDown className="h-3 w-3 text-[#8B978F]" />
           </button>
@@ -195,7 +199,10 @@ export const TopBar = ({
                 : 'bg-[#FFFFFF] border-[#E4E8E3] text-[#1D2822]'
             }`}>
               <div className="p-2 border-b border-[#2A352D]/20 mb-1">
-                <div className="text-xs font-bold truncate">{user?.email || 'abhay@wiseraman.local'}</div>
+                <div className="text-xs font-bold truncate">{user?.name || user?.email || '-'}</div>
+                {user?.name && (
+                  <div className="text-[10px] text-[#8B978F] truncate">{user?.email}</div>
+                )}
                 <div className="text-[10px] text-[#8B978F] mt-0.5">
                   {accounts.length} connected account(s)
                 </div>

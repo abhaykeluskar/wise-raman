@@ -16,7 +16,7 @@ export const RecurringBillsWatchdog = ({ onSelectMerchant }) => {
     transactions.forEach(t => {
       const amt = parseFloat(t.amount);
       if (amt < 0 && !t.is_excluded_from_spending) {
-        const m = t.merchant || t.description || 'Unknown';
+        const m = t.merchant || t.description || '-';
         if (!merchantMap.has(m)) merchantMap.set(m, []);
         merchantMap.get(m).push(t);
       }

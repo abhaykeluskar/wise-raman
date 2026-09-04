@@ -33,13 +33,13 @@ export const FinancialCalendarView = () => {
   const [calendarData, setCalendarData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [currentMonthIndex, setCurrentMonthIndex] = useState(7); // August (0-indexed)
-  const currentYear = 2026;
+  const [currentMonthIndex, setCurrentMonthIndex] = useState(() => new Date().getMonth());
+  const currentYear = new Date().getFullYear();
 
   const monthNames = [
-    'January 2026', 'February 2026', 'March 2026', 'April 2026',
-    'May 2026', 'June 2026', 'July 2026', 'August 2026',
-    'September 2026', 'October 2026', 'November 2026', 'December 2026'
+    `January ${currentYear}`, `February ${currentYear}`, `March ${currentYear}`, `April ${currentYear}`,
+    `May ${currentYear}`, `June ${currentYear}`, `July ${currentYear}`, `August ${currentYear}`,
+    `September ${currentYear}`, `October ${currentYear}`, `November ${currentYear}`, `December ${currentYear}`
   ];
 
   const monthKey = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`;

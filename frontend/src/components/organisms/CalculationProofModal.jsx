@@ -29,6 +29,35 @@ export const CalculationProofModal = ({
   if (!isOpen) return null;
 
   const getMetricDetails = () => {
+    const txList = transactions || [];
+    
+    // Income breakdown
+    const salaryCredits = txList
+      .filter(t => (t.transaction_type === 'INCOME' || t.flow === 'INFLOW' || parseFloat(t.amount || 0) > 0) && !t.is_excluded_from_spending && t.category !== 'Transfer')
+      .reduce((s, t) => s + Math.abs(parseFloat(t.amount || 0)), 0);
+
+    const internalTransfers = txList
+      .filter(t => t.category === 'Transfer' || t.is_excluded_from_spending)
+      .reduce((s, t) => s + Math.abs(parseFloat(t.amount || 0)), 0);
+
+    // Spending breakdown
+    const expenseTxns = txList.filter(t => (t.transaction_type === 'EXPENSE' || t.flow === 'OUTFLOW' || parseFloat(t.amount || 0) < 0) && !t.is_excluded_from_spending);
+    const fixedBillsKeywords = ['rent', 'utility', 'utilities', 'electricity', 'gas', 'water', 'bill', 'internet', 'broadband', 'insurance', 'tuition', 'school'];
+    
+    const fixedBills = expenseTxns
+      .filter(t => fixedBillsKeywords.some(k => (t.category || '').toLowerCase().includes(k) || (t.description || '').toLowerCase().includes(k)))
+      .reduce((s, t) => s + Math.abs(parseFloat(t.amount || 0)), 0);
+
+    const discretionary = expenseTxns
+      .filter(t => !fixedBillsKeywords.some(k => (t.category || '').toLowerCase().includes(k) || (t.description || '').toLowerCase().includes(k)))
+      .reduce((s, t) => s + Math.abs(parseFloat(t.amount || 0)), 0);
+
+    const cardSettlements = txList
+      .filter(t => (t.category || '').toLowerCase().includes('card payment') || (t.category || '').toLowerCase().includes('credit card settlement'))
+      .reduce((s, t) => s + Math.abs(parseFloat(t.amount || 0)), 0);
+
+    const liquidAccounts = accounts.filter(a => a.classification === 'ASSET');
+
     switch (metricType) {
       case 'netWorth':
         return {
@@ -36,7 +65,7 @@ export const CalculationProofModal = ({
           formula: 'Net Worth = ∑(Liquid Depository Assets + Investments) − ∑(Credit Card Liabilities + Loans)',
           explanation: 'Sum of all verified positive asset balances minus outstanding revolving debt and loans.',
           components: [
-            { label: 'Liquid Bank Balances', value: formatCurrency(accounts.filter(a => a.classification === 'ASSET').reduce((s, a) => s + parseFloat(a.balance || 0), 0)), type: 'positive' },
+            { label: 'Liquid Bank Balances', value: formatCurrency(liquidAccounts.reduce((s, a) => s + parseFloat(a.balance || 0), 0)), type: 'positive' },
             { label: 'Revolving Credit Debt', value: formatCurrency(cards.reduce((s, c) => s + parseFloat(c.current_balance || c.balance || 0), 0)), type: 'negative' }
           ]
         };
@@ -44,12 +73,14 @@ export const CalculationProofModal = ({
         return {
           title: 'Liquid Bank Balance Proof',
           formula: 'Bank Balance = ∑(Opening Balance + Credits − Debits) across Active Depository Accounts',
-          explanation: 'Computed from local SQLite statements verified with double-entry arithmetic.',
-          components: accounts.filter(a => a.classification === 'ASSET').map(a => ({
+          explanation: 'Computed from local statements verified with double-entry arithmetic.',
+          components: liquidAccounts.length > 0 ? liquidAccounts.map(a => ({
             label: a.name,
             value: formatCurrency(parseFloat(a.balance || 0)),
             type: 'neutral'
-          }))
+          })) : [
+            { label: 'Depository Accounts', value: formatCurrency(0), type: 'neutral' }
+          ]
         };
       case 'income':
         return {
@@ -57,8 +88,8 @@ export const CalculationProofModal = ({
           formula: 'Monthly Income = ∑(Credits where flow == INFLOW and category != "Transfer")',
           explanation: 'Filters out internal self-transfers between accounts to avoid inflating true earned revenue.',
           components: [
-            { label: 'Salary & Professional Credits', value: '₹1,24,500.00', type: 'positive' },
-            { label: 'Internal Account Transfers (Excluded)', value: '₹30,000.00 (₹0 Net)', type: 'neutral' }
+            { label: 'Salary & Professional Credits', value: formatCurrency(salaryCredits), type: 'positive' },
+            { label: 'Internal Account Transfers (Excluded)', value: `${formatCurrency(internalTransfers)} (₹0 Net)`, type: 'neutral' }
           ]
         };
       case 'spending':
@@ -68,9 +99,9 @@ export const CalculationProofModal = ({
           formula: 'Monthly Spending = ∑(Debits where category != "Transfer" and category != "Credit Card Payment")',
           explanation: 'Excludes credit card bill settlements to prevent double-counting transaction expenses.',
           components: [
-            { label: 'Discretionary Outflows', value: '₹30,072.00', type: 'negative' },
-            { label: 'Fixed Bills & Utilities', value: '₹28,670.00', type: 'negative' },
-            { label: 'Credit Card Settlements (Excluded)', value: '₹3,373.53 (Liability Offset)', type: 'neutral' }
+            { label: 'Discretionary Outflows', value: formatCurrency(discretionary), type: 'negative' },
+            { label: 'Fixed Bills & Utilities', value: formatCurrency(fixedBills), type: 'negative' },
+            { label: 'Credit Card Settlements (Excluded)', value: `${formatCurrency(cardSettlements)} (Liability Offset)`, type: 'neutral' }
           ]
         };
     }

@@ -34,17 +34,17 @@ export const DashboardView = ({
   onNavigateCashFlow,
   onNavigateInsights,
   onFilterTransactions,
-  selectedPeriod = 'August 2026'
+  selectedPeriod = new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })
 }) => {
   const { theme } = useTheme();
-  const { user, accounts, transactions, spendingReport, netWorth, savingsCashflow, openInLedger } = useFinance();
+  const { user, accounts, transactions, cards, spendingReport, netWorth, savingsCashflow, openInLedger } = useFinance();
   const isDark = theme === 'dark';
 
   // Calculation proof modal state
   const [proofMetric, setProofMetric] = useState(null); // 'netWorth' | 'bankBalance' | 'income' | 'spending'
 
   // Greeting name
-  const userName = (user?.email ? user.email.split('@')[0] : 'Abhay');
+  const userName = user?.name || (user?.email ? user.email.split('@')[0] : '-');
 
   // 1. Financial Overview Metrics
   const metrics = useMemo(() => {
@@ -72,15 +72,43 @@ export const DashboardView = ({
       }
     });
 
-    const totalNetWorth = netWorth?.net_worth || (liquidBalance - 3373.53);
+    const totalLiabilities = (cards || []).reduce((sum, c) => sum + Math.abs(parseFloat(c.current_balance || c.balance || 0)), 0);
+    const totalNetWorth = netWorth?.net_worth ?? (liquidBalance - totalLiabilities);
+
+    // Trends from historical data if available
+    let incomeTrend = null;
+    let spendingTrend = null;
+    if (savingsCashflow?.monthly && savingsCashflow.monthly.length >= 2) {
+      const cur = savingsCashflow.monthly[savingsCashflow.monthly.length - 1];
+      const prev = savingsCashflow.monthly[savingsCashflow.monthly.length - 2];
+      if (prev.income > 0) {
+        const diff = ((cur.income - prev.income) / prev.income) * 100;
+        incomeTrend = {
+          value: `${Math.abs(diff).toFixed(1)}%`,
+          direction: diff >= 0 ? 'up' : 'down',
+          label: `vs ${prev.month || 'prev'}`
+        };
+      }
+      if (prev.expenses > 0) {
+        const diff = ((cur.expenses - prev.expenses) / prev.expenses) * 100;
+        spendingTrend = {
+          value: `${Math.abs(diff).toFixed(1)}%`,
+          direction: diff >= 0 ? 'up' : 'down',
+          label: `vs ${prev.month || 'prev'}`,
+          positiveIsGood: false
+        };
+      }
+    }
 
     return {
-      netWorth: totalNetWorth > 0 ? totalNetWorth : 1872450,
-      bankBalance: liquidBalance > 0 ? liquidBalance : 96378.45,
-      monthlyIncome: monthIncome > 0 ? monthIncome : 124500,
-      monthlySpending: monthSpending > 0 ? monthSpending : 58742
+      netWorth: totalNetWorth || 0,
+      bankBalance: liquidBalance || 0,
+      monthlyIncome: monthIncome || 0,
+      monthlySpending: monthSpending || 0,
+      incomeTrend,
+      spendingTrend
     };
-  }, [accounts, transactions, netWorth]);
+  }, [accounts, transactions, cards, netWorth, savingsCashflow]);
 
   // 2. Spending Breakdown by Category (Horizontal Bars)
   const categoryBreakdown = useMemo(() => {
@@ -107,17 +135,29 @@ export const DashboardView = ({
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
 
-    if (list.length === 0) {
-      return [
-        { name: 'Food & Dining', amount: 18230, percentage: 31 },
-        { name: 'Shopping', amount: 11842, percentage: 20 },
-        { name: 'Bills & Utilities', amount: 7650, percentage: 13 },
-        { name: 'Transport', amount: 6420, percentage: 11 },
-        { name: 'Others', amount: 14600, percentage: 25 },
-      ];
-    }
     return list;
   }, [transactions]);
+
+  // Primary insight derived from actual transactions
+  const primaryInsight = useMemo(() => {
+    if (categoryBreakdown.length > 0) {
+      const top = categoryBreakdown[0];
+      return {
+        headline: `Highest spending category is ${top.name} at ${formatCurrency(top.amount)}.`,
+        detail: `Accounting for ${top.percentage}% of your tracked monthly spending.`
+      };
+    }
+    if (transactions.length > 0) {
+      return {
+        headline: `${transactions.length} transaction(s) tracked for this period.`,
+        detail: `Total tracked spending is ${formatCurrency(metrics.monthlySpending)}.`
+      };
+    }
+    return {
+      headline: 'No transaction activity detected yet.',
+      detail: 'Import a bank statement or payslip to generate deterministic financial insights.'
+    };
+  }, [categoryBreakdown, transactions, metrics.monthlySpending]);
 
   // Handle Category click to jump directly to Ledger with that filter
   const handleCategoryClick = (categoryName) => {
@@ -140,14 +180,7 @@ export const DashboardView = ({
         net: (m.income || 0) - (m.expenses || 0)
       }));
     }
-    return [
-      { month: 'Mar', income: 115000, spending: 52000, net: 63000 },
-      { month: 'Apr', income: 120000, spending: 58000, net: 62000 },
-      { month: 'May', income: 118000, spending: 61000, net: 57000 },
-      { month: 'Jun', income: 125000, spending: 54000, net: 71000 },
-      { month: 'Jul', income: 122000, spending: 64000, net: 58000 },
-      { month: 'Aug', income: 124500, spending: 58742, net: 65758 }
-    ];
+    return [];
   }, [savingsCashflow]);
 
   return (
@@ -180,7 +213,6 @@ export const DashboardView = ({
             <MetricValue
               label="Net Worth"
               value={formatCurrency(metrics.netWorth)}
-              trend={{ value: '3.2%', direction: 'up', label: 'from July' }}
               onHowCalculated={() => setProofMetric('netWorth')}
               size="md"
             />
@@ -200,7 +232,7 @@ export const DashboardView = ({
             <MetricValue
               label="Monthly Income"
               value={formatCurrency(metrics.monthlyIncome)}
-              trend={{ value: '2.0%', direction: 'up', label: 'consistent' }}
+              trend={metrics.incomeTrend}
               onHowCalculated={() => setProofMetric('income')}
               size="md"
             />
@@ -210,7 +242,7 @@ export const DashboardView = ({
             <MetricValue
               label="Monthly Spending"
               value={formatCurrency(metrics.monthlySpending)}
-              trend={{ value: '8.3%', direction: 'down', label: 'below avg', positiveIsGood: false }}
+              trend={metrics.spendingTrend}
               onHowCalculated={() => setProofMetric('spending')}
               size="md"
             />
@@ -255,28 +287,34 @@ export const DashboardView = ({
           </div>
         </div>
 
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3F8F5E" stopOpacity={0.15}/>
-                  <stop offset="95%" stopColor="#3F8F5E" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#A77B58" stopOpacity={0.12}/>
-                  <stop offset="95%" stopColor="#A77B58" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={val => `₹${(val / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(val) => [formatCurrency(val), '']} />
-              <Area type="monotone" dataKey="income" name="Income" stroke="#3F8F5E" strokeWidth={2} fillOpacity={1} fill="url(#incomeGrad)" />
-              <Area type="monotone" dataKey="spending" name="Spending" stroke="#A77B58" strokeWidth={2} fillOpacity={1} fill="url(#spendGrad)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        {chartData.length === 0 ? (
+          <div className="h-64 w-full flex items-center justify-center text-xs text-[#8B978F]">
+            No cash flow trend data available. Import bank statements to view trends.
+          </div>
+        ) : (
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3F8F5E" stopOpacity={0.15}/>
+                    <stop offset="95%" stopColor="#3F8F5E" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#A77B58" stopOpacity={0.12}/>
+                    <stop offset="95%" stopColor="#A77B58" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={val => `₹${(val / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(val) => [formatCurrency(val), '']} />
+                <Area type="monotone" dataKey="income" name="Income" stroke="#3F8F5E" strokeWidth={2} fillOpacity={1} fill="url(#incomeGrad)" />
+                <Area type="monotone" dataKey="spending" name="Spending" stroke="#A77B58" strokeWidth={2} fillOpacity={1} fill="url(#spendGrad)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       {/* 4. Two-Column Layout: Spending Breakdown + Recent Transactions */}
@@ -293,43 +331,49 @@ export const DashboardView = ({
                   Spending by Category
                 </h3>
                 <p className={`text-[11px] ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
-                  August 2026 total: {formatCurrency(metrics.monthlySpending)} (Click category to filter ledger)
+                  {selectedPeriod ? `${selectedPeriod} total:` : 'Total:'} {formatCurrency(metrics.monthlySpending)} (Click category to filter ledger)
                 </p>
               </div>
             </div>
 
-            <div className="space-y-4 my-2">
-              {categoryBreakdown.map((cat, idx) => (
-                <div 
-                  key={idx} 
-                  onClick={() => handleCategoryClick(cat.name)}
-                  className="space-y-1.5 cursor-pointer group p-1 rounded-[8px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                  title={`Filter transactions for ${cat.name}`}
-                >
-                  <div className="flex items-center justify-between text-xs">
-                    <span className={`font-medium group-hover:text-[#3F8F5E] transition-colors ${
-                      isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'
+            {categoryBreakdown.length === 0 ? (
+              <div className="py-12 text-center text-xs text-[#8B978F]">
+                No spending categories recorded for this period
+              </div>
+            ) : (
+              <div className="space-y-4 my-2">
+                {categoryBreakdown.map((cat, idx) => (
+                  <div 
+                    key={idx} 
+                    onClick={() => handleCategoryClick(cat.name)}
+                    className="space-y-1.5 cursor-pointer group p-1 rounded-[8px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                    title={`Filter transactions for ${cat.name}`}
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <span className={`font-medium group-hover:text-[#3F8F5E] transition-colors ${
+                        isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'
+                      }`}>
+                        {cat.name} →
+                      </span>
+                      <span className="tabular-nums font-semibold">
+                        {formatCurrency(cat.amount)}
+                      </span>
+                    </div>
+                    <div className={`w-full h-1.5 rounded-full overflow-hidden ${
+                      isDark ? 'bg-[#1C251F]' : 'bg-[#F1F8F4]'
                     }`}>
-                      {cat.name} →
-                    </span>
-                    <span className="tabular-nums font-semibold">
-                      {formatCurrency(cat.amount)}
-                    </span>
+                      <div 
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ 
+                          width: `${cat.percentage}%`,
+                          backgroundColor: idx === 0 ? '#5BAE78' : idx === 1 ? '#A77B58' : '#7FC39A'
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className={`w-full h-1.5 rounded-full overflow-hidden ${
-                    isDark ? 'bg-[#1C251F]' : 'bg-[#F1F8F4]'
-                  }`}>
-                    <div 
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{ 
-                        width: `${cat.percentage}%`,
-                        backgroundColor: idx === 0 ? '#5BAE78' : idx === 1 ? '#A77B58' : '#7FC39A'
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="pt-4 border-t border-[#E4E8E3]/20 mt-4">
@@ -404,10 +448,10 @@ export const DashboardView = ({
             <span className="text-[11px] text-[#A77B58] font-medium">Deterministic Rule</span>
           </div>
           <h4 className={`text-sm sm:text-base font-bold ${isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'}`}>
-            Your spending is 8.3% lower than your 3-month average.
+            {primaryInsight.headline}
           </h4>
           <p className={`text-xs ${isDark ? 'text-[#C2CCC5]' : 'text-[#4F5D55]'}`}>
-            Reduced discretionary dining and shopping this month saved approximately ₹5,280.
+            {primaryInsight.detail}
           </p>
         </div>
 

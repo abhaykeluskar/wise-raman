@@ -29,63 +29,23 @@ export const DocumentsView = ({ onOpenUploadModal, onNavigateLedger }) => {
       return statements.map((s, idx) => ({
         id: s.id || `s-${idx}`,
         filename: s.filename || s.name || `Statement_${idx + 1}.pdf`,
-        bank_name: s.bank_name || s.bank?.name || 'Bank Statement',
-        account_name: s.account_name || s.account?.name || 'Primary Depository',
+        bank_name: s.bank_name || s.bank?.name || '-',
+        account_name: s.account_name || s.account?.name || '-',
         account_id: s.account_id,
-        file_type: s.file_type || (s.filename?.endsWith('.csv') ? 'CSV' : 'PDF'),
-        period: s.period || s.billing_cycle || 'August 2026',
-        pages: s.pages || (s.file_type === 'CSV' ? 1 : 8),
-        tx_count: s.tx_count || s.transaction_count || 120,
-        reconciliation_status: s.reconciliation_status || 'MATCHED',
-        confidence: s.confidence || 98.7,
-        status: s.status || 'Processed'
+        file_type: s.file_type || (s.filename?.endsWith('.csv') ? 'CSV' : 'PDF') || '-',
+        period: s.period || s.billing_cycle || '-',
+        pages: s.pages || 0,
+        tx_count: s.tx_count != null ? s.tx_count : (s.transaction_count != null ? s.transaction_count : 0),
+        reconciliation_status: s.reconciliation_status || '-',
+        confidence: s.confidence != null ? s.confidence : 0,
+        status: s.status || '-'
       }));
     }
-    return [
-      {
-        id: 's1',
-        filename: 'SBI_Savings_Aug2026.pdf',
-        bank_name: 'State Bank of India',
-        account_name: 'SBI Primary Savings',
-        file_type: 'PDF',
-        period: 'August 2026',
-        pages: 10,
-        tx_count: 163,
-        reconciliation_status: 'MATCHED',
-        confidence: 98.7,
-        status: 'Processed'
-      },
-      {
-        id: 's2',
-        filename: 'Axis_Airtel_CC_July2026.pdf',
-        bank_name: 'Axis Bank',
-        account_name: 'Axis Airtel Credit Card',
-        file_type: 'PDF',
-        period: 'July 2026',
-        pages: 4,
-        tx_count: 42,
-        reconciliation_status: 'MATCHED',
-        confidence: 99.1,
-        status: 'Processed'
-      },
-      {
-        id: 's3',
-        filename: 'Federal_OneCard_April2026.csv',
-        bank_name: 'Federal Bank',
-        account_name: 'Federal OneCard',
-        file_type: 'CSV',
-        period: 'April 2026',
-        pages: 1,
-        tx_count: 88,
-        reconciliation_status: 'MATCHED',
-        confidence: 100.0,
-        status: 'Processed'
-      }
-    ];
+    return [];
   }, [statements]);
 
   const activeDoc = useMemo(() => {
-    return statementList.find(s => s.id === selectedStatementId) || statementList[0];
+    return statementList.find(s => s.id === selectedStatementId) || statementList[0] || null;
   }, [statementList, selectedStatementId]);
 
   const handleInspectTransactions = () => {
@@ -133,38 +93,50 @@ export const DocumentsView = ({ onOpenUploadModal, onNavigateLedger }) => {
             All Imported Statements ({statementList.length})
           </span>
 
-          {statementList.map(doc => {
-            const isSelected = activeDoc?.id === doc.id;
-            return (
-              <div
-                key={doc.id}
-                onClick={() => setSelectedStatementId(doc.id)}
-                className={`p-4 rounded-[14px] border transition-all duration-150 cursor-pointer ${
-                  isSelected
-                    ? isDark
-                      ? 'bg-[#1C251F] border-[#5BAE78]'
-                      : 'bg-[#F1F8F4] border-[#7FC39A]'
-                    : isDark
-                      ? 'bg-[#171E19] border-[#2A352D] hover:border-[#5BAE78]/40'
-                      : 'bg-[#FFFFFF] border-[#E4E8E3] hover:border-[#C6E4D2]'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-bold text-xs truncate max-w-[200px]">
-                    {doc.account_name || doc.bank_name || doc.filename}
-                  </span>
-                  <Badge variant="verified" size="xs">
-                    ✓ Processed
-                  </Badge>
-                </div>
+          {statementList.length === 0 ? (
+            <div className={`p-8 rounded-[14px] border text-center ${
+              isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3]'
+            }`}>
+              <FileText className="h-8 w-8 text-[#8B978F] mx-auto mb-2" />
+              <p className="text-xs font-semibold">No statements imported</p>
+              <p className="text-[11px] text-[#8B978F] mt-1">
+                Upload bank statements or payslip PDFs to verify financial provenance.
+              </p>
+            </div>
+          ) : (
+            statementList.map(doc => {
+              const isSelected = activeDoc?.id === doc.id;
+              return (
+                <div
+                  key={doc.id}
+                  onClick={() => setSelectedStatementId(doc.id)}
+                  className={`p-4 rounded-[14px] border transition-all duration-150 cursor-pointer ${
+                    isSelected
+                      ? isDark
+                        ? 'bg-[#1C251F] border-[#5BAE78]'
+                        : 'bg-[#F1F8F4] border-[#7FC39A]'
+                      : isDark
+                        ? 'bg-[#171E19] border-[#2A352D] hover:border-[#5BAE78]/40'
+                        : 'bg-[#FFFFFF] border-[#E4E8E3] hover:border-[#C6E4D2]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-bold text-xs truncate max-w-[200px]">
+                      {doc.account_name || doc.bank_name || doc.filename}
+                    </span>
+                    <Badge variant="verified" size="xs">
+                      ✓ Processed
+                    </Badge>
+                  </div>
 
-                <div className="flex items-center justify-between text-[11px] text-[#8B978F] mt-2">
-                  <span>{doc.period || 'Statement'} · {doc.file_type || 'PDF'}</span>
-                  <span>{doc.tx_count || '100+'} txns</span>
+                  <div className="flex items-center justify-between text-[11px] text-[#8B978F] mt-2">
+                    <span>{doc.period || '-'} · {doc.file_type || '-'}</span>
+                    <span>{doc.tx_count != null ? doc.tx_count : 0} txns</span>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         {/* Selected Document Evidence Details (7 cols) */}
@@ -187,19 +159,19 @@ export const DocumentsView = ({ onOpenUploadModal, onNavigateLedger }) => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 my-6">
                 <div>
                   <span className="text-[10px] uppercase font-bold text-[#8B978F]">Format</span>
-                  <div className="text-sm font-bold font-mono mt-0.5">{activeDoc.file_type || 'PDF'}</div>
+                  <div className="text-sm font-bold font-mono mt-0.5">{activeDoc.file_type || '-'}</div>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-[#8B978F]">Pages</span>
-                  <div className="text-sm font-bold tabular-nums mt-0.5">{activeDoc.pages || 10}</div>
+                  <div className="text-sm font-bold tabular-nums mt-0.5">{activeDoc.pages || 0}</div>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-[#8B978F]">Transactions</span>
-                  <div className="text-sm font-bold tabular-nums mt-0.5">{activeDoc.tx_count || 163}</div>
+                  <div className="text-sm font-bold tabular-nums mt-0.5">{activeDoc.tx_count || 0}</div>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-[#8B978F]">Confidence</span>
-                  <div className="text-sm font-bold text-[#3F8F5E] tabular-nums mt-0.5">{activeDoc.confidence || 98.7}%</div>
+                  <div className="text-sm font-bold text-[#3F8F5E] tabular-nums mt-0.5">{activeDoc.confidence || 0}%</div>
                 </div>
               </div>
 

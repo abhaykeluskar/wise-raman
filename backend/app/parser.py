@@ -2,7 +2,8 @@ import io
 import re
 import json
 import os
-from typing import List, Literal, Optional, Dict, Any
+import calendar
+from typing import List, Literal, Optional, Dict, Any, Union
 import pandas as pd
 import pdfplumber
 import requests
@@ -1759,53 +1760,259 @@ def parse_statement(
         "closing_balance": statement_summary.get("total_amount_due")
     }
 
-class PayslipExtractionSchema(BaseModel):
-    employee_id: Optional[str] = None
-    employee_name: Optional[str] = None
-    company_name: Optional[str] = None
-    period_month: Optional[int] = None
-    period_year: Optional[int] = None
-    bank_account_no: Optional[str] = None
-    basic_salary: float = 0.0
-    hra: float = 0.0
-    special_allowance: float = 0.0
-    other_earnings: float = 0.0
-    gross_earnings: float = 0.0
-    provident_fund: float = 0.0
-    professional_tax: float = 0.0
-    income_tax_tds: float = 0.0
-    other_deductions: float = 0.0
-    gross_deductions: float = 0.0
-    net_pay: float = 0.0
+MONTH_NAME_MAP = {m.lower(): i for i, m in enumerate(calendar.month_name) if m}
+MONTH_ABBR_MAP = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
 
+def clean_salary_amount(val_str: Any) -> float:
+    if val_str is None:
+        return 0.0
+    if isinstance(val_str, (int, float)):
+        return float(val_str)
+    cleaned = re.sub(r"[^\d.-]", "", str(val_str))
+    try:
+        return float(cleaned)
+    except ValueError:
+        return 0.0
 
-def parse_payslip(file_bytes: bytes, password: Optional[str] = None) -> Dict[str, Any]:
-    """Parse Payslip PDF using Ollama LLM with schema-constrained JSON output."""
+def parse_payslip_period(text: str) -> tuple[Optional[int], Optional[int]]:
+    patterns = [
+        r'(?:Payslip\s+(?:For\s+)?|Salary\s+of\s+Month\s+Year\s+|Period\s*:\s*|Month\s*:\s*)([A-Za-z]+)\s*(\d{4})',
+        r'([A-Za-z]+)\s+(\d{4})\s*(?:Compensation\s+Statement|Payslip|Pay\s*Slip)',
+        r'(?:Payslip|Pay\s*Slip)[^\n]*\b([A-Za-z]+)\s*(\d{4})\b',
+        r'\b(January|February|March|April|May|June|July|August|September|October|November|December)\s*(\d{4})\b',
+        r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(\d{4})\b'
+    ]
+    for p in patterns:
+        m = re.search(p, text, re.IGNORECASE)
+        if m:
+            m_str, y_str = m.group(1).lower(), m.group(2)
+            month_num = MONTH_NAME_MAP.get(m_str) or MONTH_ABBR_MAP.get(m_str[:3])
+            if month_num and 1900 <= int(y_str) <= 2100:
+                return month_num, int(y_str)
+    return None, None
+
+def parse_single_payslip_text(text: str) -> Optional[Dict[str, Any]]:
+    month, year = parse_payslip_period(text)
+    if not month or not year:
+        return None
+
+    data = {
+        "company_name": None,
+        "period_month": month,
+        "period_year": year,
+        "employee_id": None,
+        "employee_name": None,
+        "bank_account_no": None,
+        "basic_salary": 0.0,
+        "hra": 0.0,
+        "special_allowance": 0.0,
+        "other_earnings": 0.0,
+        "gross_earnings": 0.0,
+        "provident_fund": 0.0,
+        "professional_tax": 0.0,
+        "income_tax_tds": 0.0,
+        "other_deductions": 0.0,
+        "gross_deductions": 0.0,
+        "net_pay": 0.0
+    }
+
+    # Company name detection
+    first_lines = [line.strip() for line in text.splitlines() if line.strip()][:5]
+    if any("accenture" in l.lower() for l in first_lines) or "accenture" in text[:300].lower():
+        data["company_name"] = "Accenture Solutions Pvt Ltd"
+    elif any("regur" in l.lower() for l in first_lines) or "regur.net" in text[:400].lower():
+        data["company_name"] = "Regur Technology Solutions"
+    else:
+        for l in first_lines:
+            if not re.search(r'payslip|pay\s*slip|compensation', l, re.I) and len(l) > 3:
+                data["company_name"] = l
+                break
+
+    # Employee ID
+    m_id = re.search(r'Employee\s+(?:ID|Code|No\.?)[:\s]*([A-Za-z0-9_-]+)', text, re.I)
+    if m_id:
+        data["employee_id"] = m_id.group(1).strip()
+
+    # Employee Name
+    m_name = re.search(r'(?:Employee\s+Name|Name)[:\s]*([A-Za-z\s\.]+?)(?=\s*(?:Bank|DOJ|Designation|Department|Location|Facility|Salary|Total Working Days|\n|$))', text, re.I)
+    if m_name:
+        clean_name = re.sub(r'\s+', ' ', m_name.group(1)).strip()
+        if len(clean_name) > 2:
+            data["employee_name"] = clean_name
+
+    # Bank Account No
+    m_acc = re.search(r'(?:A/c\s+No\.?|Account\s+No\.?|Bank\s+A/c\s+No\.?)[:\s]*([A-Za-z0-9]+)', text, re.I)
+    if m_acc:
+        data["bank_account_no"] = m_acc.group(1).strip()
+
+    # Basic Salary
+    m_basic = re.search(r'BASIC\s+([\d,]+\.?\d*)', text, re.I)
+    if m_basic:
+        data["basic_salary"] = clean_salary_amount(m_basic.group(1))
+
+    # HRA
+    m_hra = re.search(r'(?:HOUSE\s+RENT\s+ALLOWANCE|HRA)\s+([\d,]+\.?\d*)', text, re.I)
+    if m_hra:
+        data["hra"] = clean_salary_amount(m_hra.group(1))
+
+    # Special / Adhoc Allowance
+    m_adhoc = re.search(r'(?:ADHOC|SPECIAL)\s+ALLOWANCE\s+([\d,]+\.?\d*)', text, re.I)
+    if m_adhoc:
+        data["special_allowance"] = clean_salary_amount(m_adhoc.group(1))
+
+    # Other earnings (Misc allowance, variable pay, bonus, leave encashment)
+    other_earn = 0.0
+    m_misc = re.search(r'MISCELLANEOUS\s+ALLOWANCE\s+([\d,]+\.?\d*)', text, re.I)
+    if m_misc:
+        other_earn += clean_salary_amount(m_misc.group(1))
+    m_var = re.search(r'VARIABLE\s+PAY\s+([\d,]+\.?\d*)', text, re.I)
+    if m_var:
+        other_earn += clean_salary_amount(m_var.group(1))
+    m_bonus = re.search(r'Diwali\s+Bonus\s+([\d,]+\.?\d*)', text, re.I)
+    if m_bonus:
+        other_earn += clean_salary_amount(m_bonus.group(1))
+    m_leave_enc = re.search(r'Leave\s+encashment\s+([\d,]+\.?\d*)', text, re.I)
+    if m_leave_enc:
+        other_earn += clean_salary_amount(m_leave_enc.group(1))
+    m_add_rem = re.search(r'Additional\s+Remunerations\s*\n.*?Total\s+([\d,]+\.?\d*)', text, re.I | re.DOTALL)
+    if m_add_rem and other_earn == 0:
+        other_earn += clean_salary_amount(m_add_rem.group(1))
+    data["other_earnings"] = round(other_earn, 2)
+
+    # Monthly salary (Regur style)
+    if data["basic_salary"] == 0:
+        m_monthly = re.search(r'Monthly\s+Salary\s+([\d,]+\.?\d*)', text, re.I)
+        if m_monthly:
+            data["basic_salary"] = clean_salary_amount(m_monthly.group(1))
+
+    # Gross Earnings
+    m_gross_e = re.search(r'GROSS\s+EARNINGS\s+([\d,]+\.?\d*)', text, re.I)
+    if m_gross_e:
+        data["gross_earnings"] = clean_salary_amount(m_gross_e.group(1))
+    else:
+        m_gross_s = re.search(r'Gross\s+Salary\s+([\d,]+\.?\d*)', text, re.I)
+        if m_gross_s:
+            base_gross = clean_salary_amount(m_gross_s.group(1))
+            data["gross_earnings"] = round(base_gross + data["other_earnings"], 2)
+        elif data["basic_salary"] > 0:
+            data["gross_earnings"] = round(data["basic_salary"] + data["hra"] + data["special_allowance"] + data["other_earnings"], 2)
+
+    # Provident Fund
+    m_pf = re.search(r'(?:PROVIDENT\s+FUND|EPF|PF)\s+([\d,]+\.?\d*)', text, re.I)
+    if m_pf:
+        data["provident_fund"] = clean_salary_amount(m_pf.group(1))
+
+    # Professional Tax
+    m_pt = re.search(r'(?:PROFESSIONAL\s+TAX|PT)\s+([\d,]+\.?\d*)', text, re.I)
+    if m_pt:
+        data["professional_tax"] = clean_salary_amount(m_pt.group(1))
+
+    # Income Tax / TDS
+    m_tds = re.search(r'(?:INCOME\s+TAX|TDS)\s+([\d,]+\.?\d*)', text, re.I)
+    if m_tds:
+        data["income_tax_tds"] = clean_salary_amount(m_tds.group(1))
+
+    # Gross Deductions
+    m_gross_d = re.search(r'GROSS\s+DEDUCTIONS\s+([\d,]+\.?\d*)', text, re.I)
+    if m_gross_d:
+        data["gross_deductions"] = clean_salary_amount(m_gross_d.group(1))
+    else:
+        m_tot_d = re.search(r'Total\s+Deductions\s+([\d,]+\.?\d*)', text, re.I)
+        if m_tot_d:
+            data["gross_deductions"] = clean_salary_amount(m_tot_d.group(1))
+        else:
+            data["gross_deductions"] = round(data["provident_fund"] + data["professional_tax"] + data["income_tax_tds"], 2)
+
+    # Other deductions
+    known_deductions = data["provident_fund"] + data["professional_tax"] + data["income_tax_tds"]
+    if data["gross_deductions"] > known_deductions:
+        data["other_deductions"] = round(data["gross_deductions"] - known_deductions, 2)
+
+    # Net Pay
+    m_net = re.search(r'(?:NET\s+PAY|Net\s+Salary\s+Paid)\s+([\d,]+\.?\d*)', text, re.I)
+    if m_net:
+        data["net_pay"] = clean_salary_amount(m_net.group(1))
+    elif data["gross_earnings"] > 0:
+        data["net_pay"] = round(data["gross_earnings"] - data["gross_deductions"], 2)
+
+    # Reject non-payslip documents
+    if data["net_pay"] <= 0 and data["gross_earnings"] <= 0:
+        return None
+
+    return data
+
+def parse_payslip(file_bytes: bytes, password: Optional[str] = None) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+    """Parse Payslip PDF using deterministic extraction with Ollama LLM fallback."""
     from app.config import settings
     from app.ai import find_working_ollama_url
-    pages = extract_pdf_pages_text(file_bytes, password=password)
-    text = "\n".join(pages)
-    
-    prompt = f"""You are an expert payslip parser. Extract employee earnings and deductions from this Indian payslip.
-Return strictly the extracted fields matching the schema.
 
-Payslip Text:
-{text[:4000]}
+    pages = extract_pdf_pages_text(file_bytes, password=password)
+    
+    # 1. Deterministic extraction per page (handles single and multi-month files)
+    valid_payslips: List[Dict[str, Any]] = []
+    seen_periods = set()
+
+    for p_text in pages:
+        res = parse_single_payslip_text(p_text)
+        if res and res.get("period_month") and res.get("period_year"):
+            key = (res["period_month"], res["period_year"])
+            if key not in seen_periods:
+                seen_periods.add(key)
+                valid_payslips.append(res)
+
+    # 2. If per-page found nothing, try full joined document text
+    if not valid_payslips:
+        full_text = "\n".join(pages)
+        res = parse_single_payslip_text(full_text)
+        if res and res.get("period_month") and res.get("period_year"):
+            valid_payslips.append(res)
+
+    # If deterministic parsing succeeded, return immediately!
+    if valid_payslips:
+        return valid_payslips[0] if len(valid_payslips) == 1 else valid_payslips
+
+    # 3. Fallback to Local LLM if deterministic pattern matching found no payslips
+    logger.info("Deterministic payslip parsing did not find structured payslip data. Invoking Ollama LLM...")
+    full_text = "\n".join(pages)
+    prompt = f"""You are an expert payslip parser. Extract the following information from this Indian payslip text and return it strictly as valid JSON.
+Do NOT include any markdown formatting, backticks, or other text outside the JSON object.
+
+Fields to extract:
+- employee_id (string or null)
+- employee_name (string or null)
+- company_name (string or null, employer name)
+- period_month (integer, 1-12 representing the month, e.g. 5 for May)
+- period_year (integer, 4-digit calendar year, e.g. 2025)
+- bank_account_no (string or null)
+- basic_salary (number, defaults to 0)
+- hra (number, defaults to 0)
+- special_allowance (number, defaults to 0)
+- other_earnings (number, defaults to 0)
+- gross_earnings (number)
+- provident_fund (number, defaults to 0)
+- professional_tax (number, defaults to 0)
+- income_tax_tds (number, defaults to 0)
+- other_deductions (number, defaults to 0)
+- gross_deductions (number)
+- net_pay (number)
+
+Text to parse:
+{full_text[:4000]}
 """
     try:
         active_url = find_working_ollama_url()
-        schema = PayslipExtractionSchema.model_json_schema()
+        llm_model = getattr(settings, "LLM_MODEL", "qwen3:4b")
         response = requests.post(
             f"{active_url}/api/generate",
             json={
-                "model": settings.LLM_MODEL,
+                "model": llm_model,
                 "prompt": prompt,
                 "stream": False,
-                "format": schema,
+                "format": "json",
                 "options": {
                     "temperature": 0.0,
                     "num_predict": 512,
-                    "num_ctx": 4096,
+                    "num_ctx": 4096
                 }
             },
             timeout=120
@@ -1821,25 +2028,37 @@ Payslip Text:
         if resp_text.endswith("```"):
             resp_text = resp_text[:-3]
             
-        parsed_json = json.loads(resp_text)
-        
-        # Ensure all numeric fields are safe floats
+        parsed_json = json.loads(resp_text.strip())
+
+        # Rescue period_month / period_year if omitted by LLM
+        if not parsed_json.get("period_month") or not parsed_json.get("period_year"):
+            rescued_m, rescued_y = parse_payslip_period(full_text)
+            if rescued_m and rescued_y:
+                parsed_json["period_month"] = rescued_m
+                parsed_json["period_year"] = rescued_y
+
+        # Rescue company name if omitted
+        if not parsed_json.get("company_name"):
+            first_lines = [line.strip() for line in full_text.splitlines() if line.strip()][:5]
+            for l in first_lines:
+                if not re.search(r'payslip|pay\s*slip|compensation', l, re.I) and len(l) > 3:
+                    parsed_json["company_name"] = l
+                    break
+
+        # Sanitize numeric fields
         num_fields = [
             "basic_salary", "hra", "special_allowance", "other_earnings",
             "gross_earnings", "provident_fund", "professional_tax",
             "income_tax_tds", "other_deductions", "gross_deductions", "net_pay"
         ]
         for nf in num_fields:
-            raw_val = parsed_json.get(nf)
-            if raw_val is None:
-                parsed_json[nf] = 0.0
-            elif isinstance(raw_val, str):
-                cleaned = re.sub(r"[^\d.]", "", raw_val)
-                parsed_json[nf] = float(cleaned) if cleaned else 0.0
-            else:
-                parsed_json[nf] = float(raw_val)
+            parsed_json[nf] = clean_salary_amount(parsed_json.get(nf))
+
+        if not parsed_json.get("period_month") or not parsed_json.get("period_year"):
+            raise ValueError("Could not detect payslip month and year from document.")
 
         return parsed_json
     except Exception as e:
         logger.error(f"Error parsing payslip via LLM: {str(e)}")
-        raise ValueError(f"Failed to parse payslip using LLM: {str(e)}")
+        raise ValueError(f"Failed to parse payslip: {str(e)}")
+

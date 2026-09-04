@@ -31,6 +31,15 @@ class LoanCreate(BaseModel):
     start_date: date_type
     account_id: Optional[uuid.UUID] = None
 
+class LoanUpdate(BaseModel):
+    loan_name: Optional[str] = None
+    lender_name: Optional[str] = None
+    principal_amount: Optional[Decimal] = None
+    outstanding_balance: Optional[Decimal] = None
+    annual_interest_rate: Optional[Decimal] = None
+    tenure_months: Optional[int] = None
+    start_date: Optional[date_type] = None
+
 class PrepaymentSimRequest(BaseModel):
     lump_sum: float = 0.0
     extra_monthly_emi: float = 0.0
@@ -154,6 +163,36 @@ def simulate_loan_prepayment(loan_id: uuid.UUID, sim_data: PrepaymentSimRequest,
         lump_sum=sim_data.lump_sum,
         extra_monthly_emi=sim_data.extra_monthly_emi
     )
+
+@router.put("/loans/{loan_id}")
+def update_loan(loan_id: uuid.UUID, loan_data: LoanUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    from app.services.loans import calculate_emi
+    loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == current_user.id).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    
+    if loan_data.loan_name is not None:
+        loan.loan_name = loan_data.loan_name
+    if loan_data.lender_name is not None:
+        loan.lender_name = loan_data.lender_name
+    if loan_data.principal_amount is not None:
+        loan.principal_amount = loan_data.principal_amount
+    if loan_data.outstanding_balance is not None:
+        loan.outstanding_balance = loan_data.outstanding_balance
+    if loan_data.annual_interest_rate is not None:
+        loan.annual_interest_rate = loan_data.annual_interest_rate
+    if loan_data.tenure_months is not None:
+        loan.tenure_months = loan_data.tenure_months
+        loan.remaining_tenure_months = loan_data.tenure_months
+    if loan_data.start_date is not None:
+        loan.start_date = loan_data.start_date
+    
+    calculated = calculate_emi(float(loan.principal_amount), float(loan.annual_interest_rate), loan.tenure_months)
+    loan.emi_amount = Decimal(str(calculated))
+    
+    db.commit()
+    db.refresh(loan)
+    return loan
 
 @router.delete("/loans/{loan_id}")
 def delete_loan(loan_id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user)):

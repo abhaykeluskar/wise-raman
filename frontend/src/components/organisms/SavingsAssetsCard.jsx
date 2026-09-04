@@ -43,8 +43,8 @@ export const SavingsAssetsCard = () => {
         ) : (
           <div className="flex flex-col gap-2 max-h-[200px] overflow-y-auto pr-1">
             {liquidAccounts.map(acc => {
-              const bankName = acc.bank?.name || 'Bank';
-              const maskedNumber = maskAccountNumber(acc.id ? acc.id.toString().slice(-4) : '7788');
+              const bankName = acc.bank?.name || '-';
+              const maskedNumber = maskAccountNumber(acc.account_number || (acc.id ? acc.id.toString().slice(-4) : ''));
               const bal = parseFloat(acc.balance || 0);
 
               return (

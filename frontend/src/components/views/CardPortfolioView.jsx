@@ -190,7 +190,7 @@ export const CardPortfolioView = ({
             </span>
             <div className="flex items-center gap-2 text-xs font-semibold text-[#A77B58]">
               <Clock className="h-4 w-4" />
-              <span>{nextDue ? `Next Due: ${nextDue.formattedDate} (${nextDue.card?.card_name || nextDue.card?.name || 'Card'})` : 'No overdue facilities detected.'}</span>
+              <span>{nextDue ? `Next Due: ${nextDue.formattedDate} (${nextDue.card?.card_name || nextDue.card?.name || '-'})` : '-'}</span>
             </div>
             <span className={`text-[11px] mt-1 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
               No overdue facilities detected.
@@ -228,9 +228,9 @@ export const CardPortfolioView = ({
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold">{c.name || c.card_name || 'Credit Card'}</span>
+                    <span className="text-xs font-bold">{c.name || c.card_name || '-'}</span>
                     <Badge variant={isSelected ? 'brown' : 'neutral'} size="xs">
-                      {c.network || 'Card'}
+                      {c.network || '-'}
                     </Badge>
                   </div>
 
@@ -254,7 +254,7 @@ export const CardPortfolioView = ({
                 <div className="flex items-center justify-between pb-4 border-b border-[#E4E8E3]/20">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold">{activeCard.name || activeCard.card_name}</h3>
+                      <h3 className="text-base font-bold">{activeCard.name || activeCard.card_name || '-'}</h3>
                       {onOpenEditCard && (
                         <button
                           type="button"
@@ -275,7 +275,7 @@ export const CardPortfolioView = ({
                       </button>
                     </div>
                     <span className="text-xs text-[#8B978F]">
-                      Account Ref: {activeCard.account_number_mask || '•••• 4012'} · Limit: {formatCurrency(activeCard.credit_limit || 160000)}
+                      Account Ref: {activeCard.account_number_mask || '-'} · Limit: {formatCurrency(activeCard.credit_limit || 0)}
                     </span>
                   </div>
                   <Badge variant="verified">Verified Facility</Badge>
@@ -293,7 +293,7 @@ export const CardPortfolioView = ({
                   <div>
                     <span className="text-[10px] uppercase font-bold text-[#8B978F]">Payment Due</span>
                     <div className="text-xl font-bold tabular-nums text-[#A77B58] mt-0.5">
-                      {activeCard.dueDayText || '—'}
+                      {activeCard.dueDayText || '-'}
                     </div>
                   </div>
 
@@ -307,7 +307,7 @@ export const CardPortfolioView = ({
                   <div>
                     <span className="text-[10px] uppercase font-bold text-[#8B978F]">Available</span>
                     <div className="text-xl font-bold tabular-nums text-[#3F8F5E] mt-0.5">
-                      {formatCurrency(Math.max(0, (parseFloat(activeCard.credit_limit || 0) || 160000) - activeCard.outstanding))}
+                      {formatCurrency(Math.max(0, parseFloat(activeCard.credit_limit || 0) - activeCard.outstanding))}
                     </div>
                   </div>
                 </div>

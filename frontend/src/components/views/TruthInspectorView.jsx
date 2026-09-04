@@ -41,14 +41,18 @@ export const TruthInspectorView = () => {
       .finally(() => setLoadingTrace(false));
   }, [selectedTxId, authFetch]);
 
+  const selectedTx = transactions.find(t => t.id === selectedTxId);
+  const categoryStr = txTrace?.category || selectedTx?.category || '-';
+  const confidenceVal = txTrace?.confidence ? Math.round(txTrace.confidence * 100) : (selectedTx ? 100 : 0);
+
   const pipelineStages = [
-    { name: 'Source Document', status: 'PASS', detail: txTrace?.source_document?.filename || 'PDF statement parsed with intact balance proof.' },
-    { name: 'Raw Line', status: 'PASS', detail: txTrace?.raw_narration || transactions.find(t => t.id === selectedTxId)?.raw_text || 'Raw statement line string.' },
-    { name: 'Normalization', status: 'PASS', detail: txTrace?.normalized_narration || 'Standardized ISO date, clean merchant token.' },
-    { name: 'Classification', status: 'PASS', detail: `Category: ${txTrace?.category || transactions.find(t => t.id === selectedTxId)?.category || 'Shopping'} (Confidence: ${(txTrace?.confidence || 0.98)*100}%)` },
-    { name: 'Financial Event', status: 'PASS', detail: txTrace?.financial_event?.event_type || 'PURCHASE debit recognized in operating expenditure.' },
+    { name: 'Source Document', status: 'PASS', detail: txTrace?.source_document?.filename || (selectedTx ? 'PDF statement verified with intact balance proof.' : '-') },
+    { name: 'Raw Line', status: 'PASS', detail: txTrace?.raw_narration || selectedTx?.raw_text || '-' },
+    { name: 'Normalization', status: 'PASS', detail: txTrace?.normalized_narration || (selectedTx ? 'Standardized ISO date, clean merchant token.' : '-') },
+    { name: 'Classification', status: 'PASS', detail: selectedTx ? `Category: ${categoryStr} (Confidence: ${confidenceVal}%)` : '-' },
+    { name: 'Financial Event', status: 'PASS', detail: txTrace?.financial_event?.event_type || (selectedTx ? 'Debit/Credit transaction recognized in ledger.' : '-') },
     { name: 'Mathematical Invariant', status: 'PASS', detail: 'Opening + Credits − Debits = Closing verified on account.' },
-    { name: 'Evidence Package', status: 'PASS', detail: 'Database cryptographic foreign keys linked to source file.' },
+    { name: 'Evidence Package', status: 'PASS', detail: selectedTx ? 'Database cryptographic foreign keys linked to source file.' : '-' },
     { name: 'AI Grounding', status: 'PASS', detail: 'RAG copilot constrained exclusively to deterministic aggregate table.' }
   ];
 

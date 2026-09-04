@@ -47,57 +47,31 @@ export const InsightsView = ({ onOpenTransactionsWithFilter }) => {
     anomalies.forEach(a => {
       list.push({
         category: 'Unusual Activity',
-        headline: `Unusual spend at ${a.merchant || 'Merchant'}`,
-        supportingNumber: `₹${a.amount}`,
+        headline: `Unusual spend at ${a.merchant || a.description || '-'}`,
+        supportingNumber: formatCurrency(parseFloat(a.amount || 0)),
         comparison: `${a.multiplier ? `${a.multiplier}x higher than usual` : 'Above normal spending range'}`,
-        whyItMatters: a.explanation || 'Transaction deviation detected based on 90-day moving average.',
-        actionCategory: a.category || 'Shopping',
-        badgeVariant: 'warning'
+        whyItMatters: a.explanation || 'Transaction deviation detected based on moving average.',
+        actionCategory: a.category || '-',
+        badgeVariant: 'warning',
+        date: a.date
       });
     });
 
-    // Default analytical insights
-    list.push(
-      {
-        category: 'Spending',
-        headline: 'Food spending increased 18%',
-        supportingNumber: '₹18,230 this month',
-        comparison: 'vs ₹15,450 3-month average',
-        whyItMatters: 'Weekend delivery orders on Swiggy and Zomato grew from 14 to 22 transactions.',
-        actionCategory: 'Food & Dining',
-        badgeVariant: 'warning'
-      },
-      {
-        category: 'Savings',
-        headline: 'Monthly Savings Rate reached 52.8%',
-        supportingNumber: '₹65,758 retained',
-        comparison: 'vs 44.1% historical median',
-        whyItMatters: 'Lower discretionary shopping left more liquid surplus in your primary savings account.',
-        actionCategory: 'Income',
-        badgeVariant: 'positive'
-      },
-      {
-        category: 'Subscriptions',
-        headline: '4 recurring SaaS charges identified',
-        supportingNumber: '₹3,450 / month',
-        comparison: 'consistent over 6 billing cycles',
-        whyItMatters: 'Includes streaming and cloud storage platforms renewed automatically.',
-        actionCategory: 'Bills & Utilities',
-        badgeVariant: 'brown'
-      },
-      {
-        category: 'Credit Cards',
-        headline: 'Card utilization down by 4.2%',
-        supportingNumber: '2.1% utilization',
-        comparison: '₹3,373 of ₹1,60,000 credit line',
-        whyItMatters: 'Maintaining utilization under 10% positively impacts your overall credit rating.',
-        actionCategory: 'Credit Card Payment',
-        badgeVariant: 'positive'
-      }
-    );
+    // Lifestyle inflation analysis from backend
+    if (lifestyleData && lifestyleData.inflation_rate !== undefined) {
+      list.push({
+        category: 'Lifestyle Inflation',
+        headline: `Discretionary spend changed by ${lifestyleData.inflation_rate}%`,
+        supportingNumber: formatCurrency(lifestyleData.current_period_spend || 0),
+        comparison: `vs ${formatCurrency(lifestyleData.baseline_spend || 0)} baseline`,
+        whyItMatters: lifestyleData.analysis || 'Based on comparative historical monthly spending analysis.',
+        actionCategory: 'Shopping',
+        badgeVariant: parseFloat(lifestyleData.inflation_rate) > 10 ? 'warning' : 'positive'
+      });
+    }
 
     return list;
-  }, [anomalies]);
+  }, [anomalies, lifestyleData]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-200 pb-12">
@@ -119,24 +93,35 @@ export const InsightsView = ({ onOpenTransactionsWithFilter }) => {
       </div>
 
       {/* 2. Insights Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {insightsList.map((item, idx) => (
-          <div
-            key={idx}
-            className={`p-6 rounded-[16px] border flex flex-col justify-between transition-all duration-150 ${
-              isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
-            }`}
-          >
-            <div>
-              {/* Category Badge */}
-              <div className="flex items-center justify-between mb-3">
-                <Badge variant={item.badgeVariant || 'brown'} size="xs">
-                  {item.category}
-                </Badge>
-                <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
-                  August 2026
-                </span>
-              </div>
+      {insightsList.length === 0 ? (
+        <div className={`p-12 text-center rounded-[16px] border ${
+          isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3]'
+        }`}>
+          <Sparkles className="h-8 w-8 mx-auto text-[#8B978F] mb-3 opacity-60" />
+          <h3 className="text-sm font-bold">No active anomalies or pattern flags</h3>
+          <p className="text-xs text-[#8B978F] mt-1 max-w-md mx-auto">
+            Your spending behavior is consistent with baseline patterns. As statement data and transactions are recorded, verified deterministic insights will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {insightsList.map((item, idx) => (
+            <div
+              key={idx}
+              className={`p-6 rounded-[16px] border flex flex-col justify-between transition-all duration-150 ${
+                isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
+              }`}
+            >
+              <div>
+                {/* Category Badge */}
+                <div className="flex items-center justify-between mb-3">
+                  <Badge variant={item.badgeVariant || 'brown'} size="xs">
+                    {item.category}
+                  </Badge>
+                  <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+                    {item.date ? formatDate(item.date) : new Date().toLocaleDateString('default', { month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
 
               {/* Headline */}
               <h3 className={`text-base font-bold tracking-tight ${isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]'}`}>
@@ -189,6 +174,7 @@ export const InsightsView = ({ onOpenTransactionsWithFilter }) => {
           </div>
         ))}
       </div>
+      )}
 
       {/* Subscription Intelligence Modal */}
       <ManageSubscriptionsModal 

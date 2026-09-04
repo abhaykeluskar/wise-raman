@@ -208,7 +208,7 @@ export const BankAccountsView = ({ onOpenAddAccount, onNavigateLedger }) => {
                       </div>
                       <div>
                         <h4 className="font-bold text-xs">{acc.name}</h4>
-                        <span className="text-[10px] text-[#8B978F]">{acc.account_type || 'Savings'}</span>
+                        <span className="text-[10px] text-[#8B978F]">{acc.account_type || '-'}</span>
                       </div>
                     </div>
 

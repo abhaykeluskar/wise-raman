@@ -457,7 +457,7 @@ export const TransactionLedgerView = ({ onOpenUploadModal, onViewSource }) => {
                       <span className={`font-semibold truncate ${
                         isDark ? 'text-[#F1F5F2] group-hover:text-[#7FC39A]' : 'text-[#1D2822] group-hover:text-[#3F8F5E]'
                       }`}>
-                        {tx.merchant || tx.description || 'Unknown'}
+                        {tx.merchant || tx.description || '-'}
                       </span>
                       {tx.verified && (
                         <CheckCircle2 className="h-3 w-3 text-[#3F8F5E] shrink-0" title="Verified" />
@@ -473,14 +473,14 @@ export const TransactionLedgerView = ({ onOpenUploadModal, onViewSource }) => {
                   {/* Category */}
                   <div className="col-span-2">
                     <Badge variant={tx.category === 'Transfer' ? 'neutral' : 'brown'} size="xs">
-                      {tx.category || 'General'}
+                      {tx.category || '-'}
                     </Badge>
                   </div>
 
                   {/* Account / Rail */}
                   <div className="col-span-2 text-[11px]">
-                    <div className="font-medium truncate">{tx.account_name || 'Account'}</div>
-                    <div className="text-[10px] font-mono text-[#8B978F]">{tx.payment_rail || 'OTHER'}</div>
+                    <div className="font-medium truncate">{tx.account_name || '-'}</div>
+                    <div className="text-[10px] font-mono text-[#8B978F]">{tx.payment_rail || '-'}</div>
                   </div>
 
                   {/* Amount / Action */}
@@ -512,14 +512,14 @@ export const TransactionLedgerView = ({ onOpenUploadModal, onViewSource }) => {
                   <div className="min-w-0 pr-3">
                     <div className="flex items-center gap-1.5">
                       <span className="font-semibold text-xs truncate">
-                        {tx.merchant || tx.description}
+                        {tx.merchant || tx.description || '-'}
                       </span>
                       {tx.verified && <CheckCircle2 className="h-3 w-3 text-[#3F8F5E]" />}
                     </div>
                     <div className="flex items-center gap-1.5 text-[11px] text-[#8B978F] mt-0.5">
-                      <span>{tx.date ? formatDate(tx.date) : ''}</span>
+                      <span>{tx.date ? formatDate(tx.date) : '-'}</span>
                       <span>·</span>
-                      <span>{tx.category || 'General'}</span>
+                      <span>{tx.category || '-'}</span>
                     </div>
                   </div>
 
@@ -560,7 +560,6 @@ export const TransactionLedgerView = ({ onOpenUploadModal, onViewSource }) => {
               onClick={() => setPage(p => Math.max(1, p - 1))}
               icon={ChevronLeft}
             >
-              Previous
             </Button>
             <Button
               variant="secondary"
@@ -568,8 +567,8 @@ export const TransactionLedgerView = ({ onOpenUploadModal, onViewSource }) => {
               disabled={page >= totalPages}
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               icon={ChevronRight}
-            >
-              Next
+              >
+              
             </Button>
           </div>
         </div>

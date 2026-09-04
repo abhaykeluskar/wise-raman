@@ -90,11 +90,32 @@ export const ReportsView = () => {
     });
 
     return {
-      income: income > 0 ? income : 124500,
-      spending: spending > 0 ? spending : 58742,
-      net: (income > 0 ? income : 124500) - (spending > 0 ? spending : 58742),
+      income,
+      spending,
+      net: income - spending,
       categories: Object.entries(catMap).map(([name, val]) => ({ name, val })).sort((a, b) => b.val - a.val)
     };
+  }, [transactions]);
+
+  const currentPeriod = useMemo(() => {
+    return new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' });
+  }, []);
+
+  const taxDeductions = useMemo(() => {
+    let sec80C = 0;
+    let sec80D = 0;
+    transactions.forEach(t => {
+      const desc = (t.description || '').toLowerCase();
+      const cat = (t.category || '').toLowerCase();
+      const amt = Math.abs(parseFloat(t.amount || 0));
+      if (desc.includes('elss') || desc.includes('ppf') || desc.includes('epf') || cat.includes('investment')) {
+        sec80C += amt;
+      }
+      if (desc.includes('insurance') || desc.includes('health') || desc.includes('ergo') || cat.includes('health')) {
+        sec80D += amt;
+      }
+    });
+    return { sec80C, sec80D };
   }, [transactions]);
 
   const handlePrint = () => {
@@ -105,11 +126,11 @@ export const ReportsView = () => {
     const reportData = {
       reportType: activeReportType,
       generatedAt: new Date().toISOString(),
-      period: periodValue,
+      period: currentPeriod,
       totals,
       aiReport: aiReportData,
       accounts: accounts.map(a => ({ name: a.name, balance: a.balance })),
-      cards: cards.map(c => ({ name: c.name, outstanding: c.current_balance || c.balance, limit: c.credit_limit }))
+      cards: cards.map(c => ({ name: c.name, outstanding: c.current_balance || c.balance, limit: c.credit_limit || 0 }))
     };
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(reportData, null, 2));
     const a = document.createElement('a');
@@ -340,11 +361,11 @@ export const ReportsView = () => {
               WiseRaman Certified Intelligence
             </span>
             <h1 className="text-2xl font-bold tracking-tight mt-1">
-              {activeReportType === 'ai' && `AI Financial Executive Intelligence — ${aiReportData?.period_label || 'August 2026'}`}
-              {activeReportType === 'monthly' && 'Monthly Financial Overview — August 2026'}
-              {activeReportType === 'spending' && 'Spending & Discretionary Analysis — August 2026'}
-              {activeReportType === 'tax' && 'Tax Deductible & Section 80C Summary — FY 2026-27'}
-              {activeReportType === 'cards' && 'Revolving Credit & Utilization Audit — August 2026'}
+              {activeReportType === 'ai' && `AI Financial Executive Intelligence — ${aiReportData?.period_label || currentPeriod}`}
+              {activeReportType === 'monthly' && `Monthly Financial Overview — ${currentPeriod}`}
+              {activeReportType === 'spending' && `Spending & Discretionary Analysis — ${currentPeriod}`}
+              {activeReportType === 'tax' && `Tax Deductible & Section 80C Summary — FY ${new Date().getFullYear()}-${(new Date().getFullYear() + 1).toString().slice(-2)}`}
+              {activeReportType === 'cards' && `Revolving Credit & Utilization Audit — ${currentPeriod}`}
             </h1>
             <p className="text-xs text-[#8B978F] mt-1">
               {activeReportType === 'ai' && aiReportData
@@ -595,7 +616,7 @@ export const ReportsView = () => {
                 Executive Summary
               </h3>
               <p className="text-xs leading-relaxed max-w-3xl">
-                During August 2026, total verified inflows across connected depository accounts totaled {formatCurrency(totals.income)} against operating debits of {formatCurrency(totals.spending)}. This yielded a net positive operating cash surplus of {formatCurrency(totals.net)}. All credit obligations remain in good standing with 0 past-due notices.
+                During {currentPeriod}, total verified inflows across connected depository accounts totaled {formatCurrency(totals.income)} against operating debits of {formatCurrency(totals.spending)}. This yielded a net operating cash flow of {formatCurrency(totals.net)}. All credit obligations remain in good standing.
               </p>
             </div>
 
@@ -626,14 +647,20 @@ export const ReportsView = () => {
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#8B978F]">
               Discretionary vs Fixed Breakdown
             </h3>
-            <div className="divide-y divide-[#E4E8E3]/20">
-              {totals.categories.map((c, idx) => (
-                <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
-                  <span className="font-semibold">{c.name}</span>
-                  <span className="tabular-nums font-bold">{formatCurrency(c.val)}</span>
-                </div>
-              ))}
-            </div>
+            {totals.categories.length === 0 ? (
+              <div className="py-8 text-center text-xs text-[#8B978F]">
+                No category breakdown recorded for this period.
+              </div>
+            ) : (
+              <div className="divide-y divide-[#E4E8E3]/20">
+                {totals.categories.map((c, idx) => (
+                  <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
+                    <span className="font-semibold">{c.name}</span>
+                    <span className="tabular-nums font-bold">{formatCurrency(c.val)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -646,11 +673,11 @@ export const ReportsView = () => {
             <div className="p-4 rounded-xl border text-xs space-y-2 bg-black/5 dark:bg-white/5">
               <div className="flex justify-between font-semibold">
                 <span>Section 80C (ELSS, EPF, Term Insurance):</span>
-                <span className="tabular-nums text-[#3F8F5E]">₹1,50,000 / ₹1,50,000 (Maxed)</span>
+                <span className="tabular-nums text-[#3F8F5E]">{formatCurrency(taxDeductions.sec80C)} / ₹1,50,000</span>
               </div>
               <div className="flex justify-between font-semibold">
                 <span>Section 80D (Health Insurance Premium):</span>
-                <span className="tabular-nums text-[#3F8F5E]">₹25,000 Verified</span>
+                <span className="tabular-nums text-[#3F8F5E]">{formatCurrency(taxDeductions.sec80D)}</span>
               </div>
             </div>
           </div>
@@ -662,20 +689,26 @@ export const ReportsView = () => {
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#8B978F]">
               Revolving Facilities Status
             </h3>
-            <div className="divide-y divide-[#E4E8E3]/20">
-              {cards.map(card => (
-                <div key={card.id} className="py-3 flex items-center justify-between text-xs">
-                  <div>
-                    <div className="font-bold">{card.name}</div>
-                    <div className="text-[11px] text-[#8B978F]">Limit: {formatCurrency(card.credit_limit || 160000)}</div>
+            {cards.length === 0 ? (
+              <div className="py-8 text-center text-xs text-[#8B978F]">
+                No credit cards connected.
+              </div>
+            ) : (
+              <div className="divide-y divide-[#E4E8E3]/20">
+                {cards.map(card => (
+                  <div key={card.id} className="py-3 flex items-center justify-between text-xs">
+                    <div>
+                      <div className="font-bold">{card.name}</div>
+                      <div className="text-[11px] text-[#8B978F]">Limit: {formatCurrency(card.credit_limit || 0)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold tabular-nums">{formatCurrency(card.current_balance || card.balance || 0)}</div>
+                      <span className="text-[10px] text-[#3F8F5E] font-bold">Good Standing</span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold tabular-nums">{formatCurrency(card.current_balance || card.balance || 0)}</div>
-                    <span className="text-[10px] text-[#3F8F5E] font-bold">Good Standing</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

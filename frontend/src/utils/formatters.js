@@ -1,7 +1,9 @@
 // Utility formatters for Indian Rupees and Dates
 
 export const formatCurrency = (val, showDecimals = true, preserveSign = true) => {
-  if (val === null || val === undefined || isNaN(val)) return '₹0.00';
+  if (val === null || val === undefined || val === '' || isNaN(val)) {
+    return showDecimals ? '₹0.00' : '₹0';
+  }
   const num = typeof val === 'string' ? parseFloat(val) : val;
   const isNegative = num < 0;
   const formatted = new Intl.NumberFormat('en-IN', {
@@ -29,9 +31,9 @@ export const toLocalDateKey = (date) => {
 };
 
 export const formatDate = (dateStr, format = 'short') => {
-  if (!dateStr) return '';
+  if (!dateStr) return '-';
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
+  if (isNaN(d.getTime())) return '-';
   
   if (format === 'short') {
     return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
@@ -44,10 +46,10 @@ export const formatDate = (dateStr, format = 'short') => {
 };
 
 export const maskAccountNumber = (accNumber) => {
-  if (!accNumber) return '...';
+  if (!accNumber) return '-';
   const str = String(accNumber).trim();
-  if (str.length <= 4) return `...${str}`;
-  return `...${str.slice(-4)}`;
+  if (str.length <= 4) return str ? `•••• ${str}` : '-';
+  return `•••• •••• ${str.slice(-4)}`;
 };
 
 export const extractErrorMessage = (detail, fallback = 'An error occurred.') => {

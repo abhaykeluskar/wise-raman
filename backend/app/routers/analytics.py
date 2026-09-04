@@ -31,6 +31,15 @@ class FinancialGoalCreate(BaseModel):
     target_date: Optional[date_type] = None
     priority: str = "MEDIUM"
 
+class FinancialGoalUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    target_amount: Optional[Decimal] = None
+    current_amount: Optional[Decimal] = None
+    monthly_contribution: Optional[Decimal] = None
+    target_date: Optional[date_type] = None
+    priority: Optional[str] = None
+
 class BudgetCreateRequest(BaseModel):
     category: str
     monthly_limit: Decimal
@@ -403,10 +412,10 @@ def get_financial_health_score_api(db: Session = Depends(get_db), current_user =
     monthly_emi = sum(float(l.emi_amount or 0) for l in loans)
 
     incomes = [float(t.amount) for t in txns if float(t.amount) > 0 and t.category == "Salary/Income"]
-    monthly_income = (sum(incomes) / max(1, len(incomes))) if incomes else 100000.0
+    monthly_income = (sum(incomes) / max(1, len(incomes))) if incomes else 0.0
 
     expenses = [abs(float(t.amount)) for t in txns if float(t.amount) < 0 and not t.is_excluded_from_spending]
-    monthly_expenses = (sum(expenses) / 3.0) if len(expenses) > 0 else 45000.0
+    monthly_expenses = (sum(expenses) / 3.0) if len(expenses) > 0 else 0.0
     months_count = 6 if len(txns) >= 10 else 2
 
     investments = [abs(float(t.amount)) for t in txns if float(t.amount) < 0 and t.category == "Investment"]
@@ -660,6 +669,32 @@ def create_goal(goal_data: FinancialGoalCreate, db: Session = Depends(get_db), c
     db.commit()
     db.refresh(goal)
     return goal
+
+@router.put("/goals/{goal_id}")
+def update_goal(goal_id: uuid.UUID, goal_data: FinancialGoalUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    from app.services.goals import calculate_goal_projection
+    goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id, FinancialGoal.user_id == current_user.id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    
+    if goal_data.name is not None:
+        goal.name = goal_data.name
+    if goal_data.category is not None:
+        goal.category = goal_data.category
+    if goal_data.target_amount is not None:
+        goal.target_amount = goal_data.target_amount
+    if goal_data.current_amount is not None:
+        goal.current_amount = goal_data.current_amount
+    if goal_data.monthly_contribution is not None:
+        goal.monthly_contribution = goal_data.monthly_contribution
+    if goal_data.priority is not None:
+        goal.priority = goal_data.priority
+    if goal_data.target_date is not None:
+        goal.target_date = goal_data.target_date
+    
+    db.commit()
+    db.refresh(goal)
+    return calculate_goal_projection(goal)
 
 @router.get("/goals/emergency-fund")
 def get_emergency_fund_status(db: Session = Depends(get_db), current_user = Depends(get_current_user)):

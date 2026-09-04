@@ -28,7 +28,7 @@ import {
 
 export const CashFlowView = () => {
   const { theme } = useTheme();
-  const { savingsCashflow, transactions, authFetch } = useFinance();
+  const { savingsCashflow, transactions, accounts, authFetch } = useFinance();
   const isDark = theme === 'dark';
 
   const [timeframe, setTimeframe] = useState('6M'); // '1M' | '3M' | '6M' | '1Y'
@@ -56,20 +56,7 @@ export const CashFlowView = () => {
         net: (m.income || 0) - (m.expenses || 0)
       }));
     }
-    return [
-      { month: 'Sep 2025', income: 110000, expenses: 54000, net: 56000 },
-      { month: 'Oct 2025', income: 112000, expenses: 62000, net: 50000 },
-      { month: 'Nov 2025', income: 114000, expenses: 59000, net: 55000 },
-      { month: 'Dec 2025', income: 130000, expenses: 75000, net: 55000 },
-      { month: 'Jan 2026', income: 115000, expenses: 56000, net: 59000 },
-      { month: 'Feb 2026', income: 118000, expenses: 58000, net: 60000 },
-      { month: 'Mar 2026', income: 115000, expenses: 52000, net: 63000 },
-      { month: 'Apr 2026', income: 120000, expenses: 58000, net: 62000 },
-      { month: 'May 2026', income: 118000, expenses: 61000, net: 57000 },
-      { month: 'Jun 2026', income: 125000, expenses: 54000, net: 71000 },
-      { month: 'Jul 2026', income: 122000, expenses: 64000, net: 58000 },
-      { month: 'Aug 2026', income: 124500, expenses: 58742, net: 65758 }
-    ];
+    return [];
   }, [savingsCashflow]);
 
   // Sliced data based on timeframe
@@ -83,23 +70,57 @@ export const CashFlowView = () => {
     }
   }, [allMonthlyData, timeframe]);
 
-  const currentMonth = allMonthlyData[allMonthlyData.length - 1] || { income: 124500, expenses: 58742, net: 65758 };
-  const savingsRate = currentMonth.income > 0 ? Math.round((currentMonth.net / currentMonth.income) * 100) : 52;
+  const currentMonth = allMonthlyData[allMonthlyData.length - 1] || { income: 0, expenses: 0, net: 0 };
+  const savingsRate = currentMonth.income > 0 ? Math.round((currentMonth.net / currentMonth.income) * 100) : 0;
+
+  // Liquid balance from accounts (Savings + Current or all liquid ASSET accounts)
+  const liquidBalance = useMemo(() => {
+    if (!accounts || accounts.length === 0) return 0;
+    return accounts
+      .filter(a => a.classification === 'ASSET' && (!a.subtype || a.subtype === 'SAVINGS' || a.subtype === 'CURRENT'))
+      .reduce((sum, a) => sum + (parseFloat(a.balance) || 0), 0);
+  }, [accounts]);
+
+  const projectedEndBalance = liquidBalance + (currentMonth.net || 0);
+
+  // Dynamic trend calculations vs previous month
+  const { incomeTrend, expenseTrend } = useMemo(() => {
+    if (allMonthlyData.length < 2) return { incomeTrend: null, expenseTrend: null };
+    const prev = allMonthlyData[allMonthlyData.length - 2];
+    const cur = allMonthlyData[allMonthlyData.length - 1];
+
+    let incTrend = null;
+    if (prev.income > 0) {
+      const diffPct = (((cur.income - prev.income) / prev.income) * 100).toFixed(1);
+      incTrend = {
+        value: `${Math.abs(diffPct)}%`,
+        direction: diffPct >= 0 ? 'up' : 'down',
+        label: 'vs previous'
+      };
+    }
+
+    let expTrend = null;
+    if (prev.expenses > 0) {
+      const diffPct = (((cur.expenses - prev.expenses) / prev.expenses) * 100).toFixed(1);
+      expTrend = {
+        value: `${Math.abs(diffPct)}%`,
+        direction: diffPct <= 0 ? 'down' : 'up',
+        label: diffPct <= 0 ? 'lower spend' : 'higher spend',
+        positiveIsGood: false
+      };
+    }
+
+    return { incomeTrend: incTrend, expenseTrend: expTrend };
+  }, [allMonthlyData]);
 
   // Upcoming planned recurring commitments
-  const displayEvents = calendarEvents.length > 0 ? calendarEvents.slice(0, 5).map(e => ({
-    title: e.title || e.event_name,
-    date: e.date || e.day || 'Upcoming',
+  const displayEvents = calendarEvents && calendarEvents.length > 0 ? calendarEvents.slice(0, 5).map(e => ({
+    title: e.title || e.event_name || '-',
+    date: e.date || e.day || '-',
     amount: Math.abs(parseFloat(e.amount || 0)),
     type: e.type || (e.flow === 'INFLOW' ? 'income' : 'commitment'),
-    source: e.source || e.account || 'Scheduled'
-  })) : [
-    { title: 'Salary Credit (Expected)', date: '01 Sep', amount: 124500, type: 'income', source: 'Employer' },
-    { title: 'Axis Airtel Card Payment', date: '01 Sep', amount: 3373.53, type: 'commitment', source: 'Axis Bank' },
-    { title: 'SIP — Nifty 50 Index Fund', date: '05 Sep', amount: 15000, type: 'investment', source: 'Groww' },
-    { title: 'Apartment Maintenance / Rent', date: '10 Sep', amount: 22000, type: 'commitment', source: 'Landlord' },
-    { title: 'Internet & Cloud Subscriptions', date: '15 Sep', amount: 2499, type: 'commitment', source: 'Airtel' }
-  ];
+    source: e.source || e.account || '-'
+  })) : [];
 
   return (
     <div className="space-y-8 animate-in fade-in duration-200 pb-12">
@@ -129,7 +150,7 @@ export const CashFlowView = () => {
             <MetricValue
               label="Latest Monthly Inflows"
               value={`+${formatCurrency(currentMonth.income)}`}
-              trend={{ value: '2.0%', direction: 'up', label: 'vs previous' }}
+              trend={incomeTrend}
               size="md"
             />
           </div>
@@ -138,7 +159,7 @@ export const CashFlowView = () => {
             <MetricValue
               label="Latest Monthly Outflows"
               value={`-${formatCurrency(currentMonth.expenses)}`}
-              trend={{ value: '8.3%', direction: 'down', label: 'lower spend', positiveIsGood: false }}
+              trend={expenseTrend}
               size="md"
             />
           </div>
@@ -155,7 +176,7 @@ export const CashFlowView = () => {
           <div className="lg:pl-4">
             <MetricValue
               label="Projected End Balance"
-              value="₹1,62,136.45"
+              value={formatCurrency(projectedEndBalance)}
               subtext="Post scheduled commitments"
               size="md"
             />
@@ -211,17 +232,21 @@ export const CashFlowView = () => {
           </div>
         </div>
 
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={filteredMonthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={val => `₹${(val / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(val) => [formatCurrency(val), '']} />
-              <Bar dataKey="income" name="Income" fill="#3F8F5E" radius={[6, 6, 0, 0]} maxBarSize={36} />
-              <Bar dataKey="expenses" name="Outflow" fill="#A77B58" radius={[6, 6, 0, 0]} maxBarSize={36} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="h-64 w-full flex items-center justify-center">
+          {filteredMonthlyData.length === 0 ? (
+            <span className="text-xs text-[#8B978F]">No cash flow records found for this timeframe.</span>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={filteredMonthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={val => `₹${(val / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(val) => [formatCurrency(val), '']} />
+                <Bar dataKey="income" name="Income" fill="#3F8F5E" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="expenses" name="Outflow" fill="#A77B58" radius={[6, 6, 0, 0]} maxBarSize={36} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
@@ -241,32 +266,38 @@ export const CashFlowView = () => {
           <Badge variant="brown" size="xs">Planned</Badge>
         </div>
 
-        <div className="divide-y divide-[#E4E8E3]/20 -mx-3">
-          {displayEvents.map((evt, idx) => (
-            <div key={idx} className="p-3.5 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-3">
-                <div className={`w-14 text-center font-bold text-[11px] ${isDark ? 'text-[#7FC39A]' : 'text-[#285A3A]'}`}>
-                  {evt.date}
+        {displayEvents.length === 0 ? (
+          <div className="py-6 text-center text-xs text-[#8B978F]">
+            No upcoming cash events scheduled.
+          </div>
+        ) : (
+          <div className="divide-y divide-[#E4E8E3]/20 -mx-3">
+            {displayEvents.map((evt, idx) => (
+              <div key={idx} className="p-3.5 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-3">
+                  <div className={`w-14 text-center font-bold text-[11px] ${isDark ? 'text-[#7FC39A]' : 'text-[#285A3A]'}`}>
+                    {evt.date}
+                  </div>
+                  <div>
+                    <div className="font-semibold">{evt.title}</div>
+                    <div className="text-[11px] text-[#8B978F]">{evt.source}</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="font-semibold">{evt.title}</div>
-                  <div className="text-[11px] text-[#8B978F]">{evt.source}</div>
-                </div>
-              </div>
 
-              <div className="text-right">
-                <div className={`tabular-nums font-semibold ${
-                  evt.type === 'income' ? 'text-[#3F8F5E]' : ''
-                }`}>
-                  {evt.type === 'income' ? '+' : '-'}{formatCurrency(evt.amount)}
+                <div className="text-right">
+                  <div className={`tabular-nums font-semibold ${
+                    evt.type === 'income' ? 'text-[#3F8F5E]' : ''
+                  }`}>
+                    {evt.type === 'income' ? '+' : '-'}{formatCurrency(evt.amount)}
+                  </div>
+                  <span className="text-[10px] text-[#8B978F] uppercase font-bold">
+                    {evt.type}
+                  </span>
                 </div>
-                <span className="text-[10px] text-[#8B978F] uppercase font-bold">
-                  {evt.type}
-                </span>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
     </div>

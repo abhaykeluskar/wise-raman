@@ -20,7 +20,7 @@ export const AnalyticsDrilldownModal = ({ category, transactions, onClose, onOpe
   const merchants = useMemo(() => {
     const map = {};
     categoryTxs.forEach(t => {
-      const name = t.merchant || t.description || 'Unknown';
+      const name = t.merchant || t.description || '-';
       map[name] = (map[name] || 0) + Math.abs(t.amount);
     });
     return Object.entries(map)

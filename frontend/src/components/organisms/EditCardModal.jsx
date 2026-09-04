@@ -16,7 +16,7 @@ export const EditCardModal = ({ isOpen, onClose, card }) => {
   const [bankId, setBankId] = useState('');
   const [network, setNetwork] = useState('Visa');
   const [rewardCurrency, setRewardCurrency] = useState('Reward Points');
-  const [creditLimit, setCreditLimit] = useState('160000');
+  const [creditLimit, setCreditLimit] = useState('0');
   const [statementDate, setStatementDate] = useState('1');
   const [accountId, setAccountId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,7 +28,7 @@ export const EditCardModal = ({ isOpen, onClose, card }) => {
       setBankId(card.bank_id || banks[0]?.id || '');
       setNetwork(card.network || 'Visa');
       setRewardCurrency(card.reward_currency || 'Reward Points');
-      setCreditLimit(card.credit_limit ? String(card.credit_limit) : '160000');
+      setCreditLimit(card.credit_limit ? String(card.credit_limit) : '0');
       setStatementDate(card.statement_date ? String(card.statement_date) : '1');
       setAccountId(card.account_id || '');
       setError('');
@@ -55,7 +55,7 @@ export const EditCardModal = ({ isOpen, onClose, card }) => {
           bank_id: bankId || banks[0]?.id,
           network: network,
           reward_currency: rewardCurrency,
-          credit_limit: creditLimit ? parseFloat(creditLimit) : 160000,
+          credit_limit: creditLimit ? parseFloat(creditLimit) : 0,
           statement_date: parseInt(statementDate) || 1,
           is_active: true,
           account_id: accountId || null

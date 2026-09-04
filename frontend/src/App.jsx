@@ -54,7 +54,9 @@ const MainLayout = () => {
   const [selectedTxForDrawer, setSelectedTxForDrawer] = useState(null);
 
   // Period filter state
-  const [selectedPeriod, setSelectedPeriod] = useState('August 2026');
+  const [selectedPeriod, setSelectedPeriod] = useState(() => 
+    new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  );
 
   const [authMode, setAuthMode] = useState('login');
   const [isInitialLoad, setIsInitialLoad] = useState(true);

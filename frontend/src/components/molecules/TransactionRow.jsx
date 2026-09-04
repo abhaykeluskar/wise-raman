@@ -51,7 +51,7 @@ export const TransactionRow = ({
             <span className={`text-xs font-semibold truncate ${
               isDark ? 'text-[#F1F5F2] group-hover:text-[#7FC39A]' : 'text-[#1D2822] group-hover:text-[#3F8F5E]'
             }`}>
-              {transaction.merchant || transaction.description || 'Unknown Transaction'}
+              {transaction.merchant || transaction.description || '-'}
             </span>
             {transaction.verified && (
               <CheckCircle2 className="h-3 w-3 text-[#3F8F5E] shrink-0" title="Verified transaction" />

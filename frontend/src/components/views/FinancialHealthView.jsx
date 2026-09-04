@@ -36,39 +36,21 @@ export const FinancialHealthView = () => {
       .catch(() => {});
   }, [authFetch]);
 
-  const overallScore = healthData?.overall_score || healthData?.score || 78;
+  const hasScore = healthData && typeof (healthData.overall_score ?? healthData.score) === 'number' && healthData.score !== null && !healthData.insufficient_data;
+  const overallScore = hasScore ? (healthData.overall_score ?? healthData.score) : 0;
 
   const scoreFactors = useMemo(() => {
-    if (healthData?.factors && Array.isArray(healthData.factors)) {
+    if (healthData?.pillars && typeof healthData.pillars === 'object' && Object.keys(healthData.pillars).length > 0) {
+      return Object.values(healthData.pillars).map(p => ({
+        label: p.name || '-',
+        score: typeof p.score === 'number' ? p.score : 0,
+        explanation: p.explanation || '-'
+      }));
+    }
+    if (healthData?.factors && Array.isArray(healthData.factors) && healthData.factors.length > 0) {
       return healthData.factors;
     }
-    return [
-      {
-        label: 'Cash Flow Health',
-        score: 85,
-        explanation: 'Operating expenses are reliably below monthly income across all analyzed cycles.'
-      },
-      {
-        label: 'Payment Behaviour',
-        score: 88,
-        explanation: 'Zero delayed or missed card facility settlements across recorded statements.'
-      },
-      {
-        label: 'Credit Utilization',
-        score: 76,
-        explanation: 'Portfolio utilization stays under 15% of total sanctioned revolving limits.'
-      },
-      {
-        label: 'Debt Management',
-        score: 72,
-        explanation: 'Conservative debt burden with liquid assets exceeding total liabilities by 2.4x.'
-      },
-      {
-        label: 'Savings Rate',
-        score: 68,
-        explanation: 'Consistent monthly capital accumulation averaging >45% of net earned revenue.'
-      }
-    ];
+    return [];
   }, [healthData]);
 
   return (
@@ -124,15 +106,17 @@ export const FinancialHealthView = () => {
                   />
                 </svg>
                 <div className="absolute flex flex-col items-center">
-                  <span className="text-2xl font-[650] tabular-nums">{overallScore}</span>
+                  <span className="text-2xl font-[650] tabular-nums">{hasScore ? overallScore : '-'}</span>
                   <span className="text-[9px] text-[#8B978F] font-bold">/ 100</span>
                 </div>
               </div>
 
               <div>
-                <span className="text-base font-bold text-[#3F8F5E]">Good Standing</span>
+                <span className={`text-base font-bold ${hasScore ? 'text-[#3F8F5E]' : 'text-[#8B978F]'}`}>
+                  {hasScore ? (healthData?.tier || 'Good Standing') : 'Insufficient Data'}
+                </span>
                 <p className={`text-xs mt-0.5 ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
-                  ↑ 6 points from July
+                  {hasScore ? (healthData?.confidence_label || 'Deterministic Model') : 'Upload 3+ statements to unlock'}
                 </p>
               </div>
             </div>
@@ -154,7 +138,9 @@ export const FinancialHealthView = () => {
               <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
                 Data Quality & Truth Confidence
               </span>
-              <Badge variant="verified">Confidence: High</Badge>
+              <Badge variant={hasScore ? "verified" : "brown"}>
+                {hasScore ? 'Confidence: High' : 'Confidence: Not Enough Data'}
+              </Badge>
             </div>
 
             <h3 className="text-sm sm:text-base font-bold">
@@ -171,7 +157,9 @@ export const FinancialHealthView = () => {
               </div>
               <div className={`p-3 rounded-[10px] border ${isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'}`}>
                 <span className="text-[10px] text-[#8B978F] uppercase font-bold">Parser Integrity</span>
-                <div className="text-xs font-bold text-[#3F8F5E] mt-0.5">98.7% Confidence</div>
+                <div className="text-xs font-bold text-[#3F8F5E] mt-0.5">
+                  {transactions.length > 0 ? '100% Verified' : '-'}
+                </div>
               </div>
               <div className={`p-3 rounded-[10px] border ${isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'}`}>
                 <span className="text-[10px] text-[#8B978F] uppercase font-bold">False Precision</span>
@@ -195,32 +183,40 @@ export const FinancialHealthView = () => {
           Score Factor Breakdown (Click factor for details)
         </h3>
 
-        <div className="space-y-6">
-          {scoreFactors.map((f, idx) => (
-            <div 
-              key={idx} 
-              onClick={() => setSelectedFactor(f)}
-              className="space-y-1.5 cursor-pointer p-2 rounded-[10px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-            >
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <span>{f.label}</span>
-                  <ChevronRight className="h-3 w-3 text-[#8B978F]" />
+        {scoreFactors.length === 0 ? (
+          <div className={`p-8 rounded-[12px] border text-center text-xs text-[#8B978F] ${
+            isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+          }`}>
+            Insufficient transaction and statement history to compute factor breakdowns. Upload at least 3 months of bank statements to unlock detailed factor scoring.
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {scoreFactors.map((f, idx) => (
+              <div 
+                key={idx} 
+                onClick={() => setSelectedFactor(f)}
+                className="space-y-1.5 cursor-pointer p-2 rounded-[10px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <span>{f.label}</span>
+                    <ChevronRight className="h-3 w-3 text-[#8B978F]" />
+                  </div>
+                  <span className="tabular-nums font-bold text-[#3F8F5E]">{f.score} / 100</span>
                 </div>
-                <span className="tabular-nums font-bold text-[#3F8F5E]">{f.score} / 100</span>
+                <div className={`w-full h-2 rounded-full overflow-hidden ${isDark ? 'bg-[#1C251F]' : 'bg-[#F1F8F4]'}`}>
+                  <div 
+                    className="h-full bg-[#3F8F5E] rounded-full transition-all duration-300"
+                    style={{ width: `${f.score}%` }}
+                  />
+                </div>
+                <p className={`text-xs ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
+                  {f.explanation}
+                </p>
               </div>
-              <div className={`w-full h-2 rounded-full overflow-hidden ${isDark ? 'bg-[#1C251F]' : 'bg-[#F1F8F4]'}`}>
-                <div 
-                  className="h-full bg-[#3F8F5E] rounded-full transition-all duration-300"
-                  style={{ width: `${f.score}%` }}
-                />
-              </div>
-              <p className={`text-xs ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
-                {f.explanation}
-              </p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Factor Explanation Modal */}

@@ -298,7 +298,7 @@ export const TransactionDetailDrawer = ({
 
             <div className="flex flex-col gap-1">
               <h2 className="text-xl font-bold tracking-tight">
-                {transaction.merchant || transaction.description || 'Transaction'}
+                {transaction.merchant || transaction.description || '-'}
               </h2>
               <div className={`tabular-nums text-3xl font-[650] tracking-tight mt-1 ${
                 isTransfer ? (isDark ? 'text-[#C2CCC5]' : 'text-[#4F5D55]') : isIncome ? 'text-[#3F8F5E]' : (isDark ? 'text-[#F1F5F2]' : 'text-[#1D2822]')
@@ -400,7 +400,7 @@ export const TransactionDetailDrawer = ({
                         </span>
                       </div>
                       <div className={`text-[11px] truncate ${isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}`}>
-                        {linkDetails.counterpart.description || linkDetails.counterpart.raw_narration || 'Counterpart Leg'}
+                        {linkDetails.counterpart.description || linkDetails.counterpart.raw_narration || '-'}
                       </div>
                       <div className="flex items-center justify-between text-[10px] text-[#8B978F] pt-1 border-t border-[#2A352D]/10">
                         <span>Date: {formatDate(linkDetails.counterpart.date)}</span>
@@ -718,23 +718,23 @@ export const TransactionDetailDrawer = ({
                 <div className="flex items-center justify-between text-xs">
                   <span className={isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}>Category</span>
                   <Badge variant={isIncome ? 'positive' : 'brown'}>
-                    {transaction.category || 'General'}
+                    {transaction.category || '-'}
                   </Badge>
                 </div>
 
                 <div className="flex items-center justify-between text-xs">
                   <span className={isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}>Account</span>
-                  <span className="font-semibold">{transaction.account_name || 'Primary Account'}</span>
+                  <span className="font-semibold">{transaction.account_name || '-'}</span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs">
                   <span className={isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}>Payment Rail</span>
-                  <span className="font-mono text-[11px]">{transaction.payment_rail || 'UPI / Card'}</span>
+                  <span className="font-mono text-[11px]">{transaction.payment_rail || '-'}</span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs">
                   <span className={isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}>Merchant</span>
-                  <span className="font-medium">{transaction.merchant || '—'}</span>
+                  <span className="font-medium">{transaction.merchant || '-'}</span>
                 </div>
 
                 {transaction.reference && (
@@ -781,7 +781,7 @@ export const TransactionDetailDrawer = ({
               <div className="space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className={isDark ? 'text-[#8B978F]' : 'text-[#7B877F]'}>Source Statement</span>
-                  <span className="font-medium">{transaction.statement_name || 'Bank Statement (PDF)'}</span>
+                  <span className="font-medium">{transaction.statement_name || '-'}</span>
                 </div>
 
                 <div className="flex items-center justify-between">

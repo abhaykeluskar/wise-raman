@@ -141,13 +141,13 @@ export const ReviewCenterView = () => {
 
                 {item.type === 'RECONCILIATION_WARNING' ? (
                   <div className="text-xs space-y-1">
-                    <div>Statement closing balance: <span className="font-bold tabular-nums">{formatCurrency(item.closingBalance || 96378.45)}</span></div>
-                    <div>Calculated: <span className="font-bold tabular-nums">{formatCurrency(item.calculatedBalance || 96378.40)}</span></div>
-                    <div className="text-[#B78332] font-semibold">Difference: {formatCurrency(item.difference || 0.05)} (Rounding Adjustment)</div>
+                    <div>Statement closing balance: <span className="font-bold tabular-nums">{formatCurrency(item.closingBalance || 0)}</span></div>
+                    <div>Calculated: <span className="font-bold tabular-nums">{formatCurrency(item.calculatedBalance || 0)}</span></div>
+                    <div className="text-[#B78332] font-semibold">Difference: {formatCurrency(item.difference || 0)} (Rounding Adjustment)</div>
                   </div>
                 ) : (
                   <div className="text-xs text-[#8B978F]">
-                    Amount: <span className="font-bold tabular-nums text-foreground">{formatCurrency(item.amount || 0)}</span> · Date: {item.date ? formatDate(item.date) : ''} · Category: <span className="font-semibold text-[#3F8F5E]">{item.category || item.suggestedCategory || 'Uncategorized'}</span>
+                    Amount: <span className="font-bold tabular-nums text-foreground">{formatCurrency(item.amount || 0)}</span> · Date: {item.date ? formatDate(item.date) : '-'} · Category: <span className="font-semibold text-[#3F8F5E]">{item.category || item.suggestedCategory || '-'}</span>
                   </div>
                 )}
               </div>

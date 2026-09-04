@@ -173,7 +173,7 @@ export const GlobalSearchModal = ({
                     <div className="flex items-center gap-2.5">
                       <Landmark className="h-4 w-4 text-[#3F8F5E]" />
                       <span>{acc.name}</span>
-                      <span className="text-[10px] text-[#8B978F]">({acc.account_type || 'Savings'})</span>
+                      <span className="text-[10px] text-[#8B978F]">({acc.account_type || '-'})</span>
                     </div>
                     <span className="tabular-nums font-semibold">{formatCurrency(parseFloat(acc.balance || 0))}</span>
                   </button>
@@ -204,9 +204,9 @@ export const GlobalSearchModal = ({
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                      <span className="text-[11px] text-[#8B978F] shrink-0">{tx.date ? formatDate(tx.date) : ''}</span>
-                      <span className="font-semibold truncate">{tx.merchant || tx.description}</span>
-                      <Badge variant="neutral" size="xs">{tx.category || 'General'}</Badge>
+                      <span className="text-[11px] text-[#8B978F] shrink-0">{tx.date ? formatDate(tx.date) : '-'}</span>
+                      <span className="font-semibold truncate">{tx.merchant || tx.description || '-'}</span>
+                      <Badge variant="neutral" size="xs">{tx.category || '-'}</Badge>
                     </div>
                     <span className={`tabular-nums font-semibold shrink-0 ${
                       parseFloat(tx.amount || 0) > 0 ? 'text-[#3F8F5E]' : ''

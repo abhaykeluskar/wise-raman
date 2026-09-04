@@ -24,7 +24,7 @@ export const FinanceProvider = ({ children }) => {
       });
       if (res.ok) {
         const data = await res.json();
-        const userData = { id: data.user_id, email: email, name: "User" };
+        const userData = data.user || { id: data.user_id, email: email, name: email.split('@')[0] };
         setUser(userData);
         setToken(data.access_token);
         localStorage.setItem('user', JSON.stringify(userData));
@@ -73,6 +73,58 @@ export const FinanceProvider = ({ children }) => {
     }
     return res;
   }, [token, logout]);
+
+  // Keep user profile fresh from /api/auth/me
+  useEffect(() => {
+    if (!token) return;
+    authFetch('/api/auth/me')
+      .then(r => r.ok ? r.json() : null)
+      .then(u => {
+        if (u) {
+          setUser(u);
+          localStorage.setItem('user', JSON.stringify(u));
+        }
+      })
+      .catch(() => {});
+  }, [token, authFetch]);
+
+  const updateUserProfile = useCallback(async ({ name, email, current_password }) => {
+    try {
+      const res = await authFetch('/api/user/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, current_password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUser(data);
+        localStorage.setItem('user', JSON.stringify(data));
+        return { success: true, user: data };
+      } else {
+        return { success: false, error: data.detail || 'Failed to update profile' };
+      }
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [authFetch]);
+
+  const changePassword = useCallback(async ({ current_password, new_password, confirm_password }) => {
+    try {
+      const res = await authFetch('/api/user/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password, new_password, confirm_password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, error: data.detail || 'Failed to change password' };
+      }
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [authFetch]);
 
 
 
@@ -322,6 +374,8 @@ export const FinanceProvider = ({ children }) => {
     login,
     register,
     logout,
+    updateUserProfile,
+    changePassword,
     authFetch,
     accounts,
     transactions: processedTransactions,
@@ -354,6 +408,8 @@ export const FinanceProvider = ({ children }) => {
     login,
     register,
     logout,
+    updateUserProfile,
+    changePassword,
     authFetch,
     accounts,
     processedTransactions,

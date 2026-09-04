@@ -1,4 +1,4 @@
-from .auth import router as auth_router
+from .auth import router as auth_router, user_router
 from .banks_accounts import router as banks_accounts_router
 from .statements import router as statements_router
 from .transactions import router as transactions_router
@@ -14,6 +14,7 @@ from .lifestyle_os import router as lifestyle_os_router
 
 all_routers = [
     auth_router,
+    user_router,
     banks_accounts_router,
     statements_router,
     transactions_router,

@@ -29,7 +29,8 @@ import {
   HeartHandshake,
   ChevronRight,
   X,
-  CreditCard
+  CreditCard,
+  Edit2
 } from 'lucide-react';
 
 export const HouseholdOSView = () => {
@@ -63,6 +64,7 @@ export const HouseholdOSView = () => {
   const [newMember, setNewMember] = useState({ name: '', relationship: 'SPOUSE', avatar_color: '#3F8F5E' });
 
   const [showAddLoan, setShowAddLoan] = useState(false);
+  const [editingLoan, setEditingLoan] = useState(null);
   const [newLoan, setNewLoan] = useState({
     loan_name: '',
     loan_type: 'HOME_LOAN',
@@ -75,6 +77,7 @@ export const HouseholdOSView = () => {
   });
 
   const [showAddGoal, setShowAddGoal] = useState(false);
+  const [editingGoal, setEditingGoal] = useState(null);
   const [newGoal, setNewGoal] = useState({
     name: '',
     category: 'EMERGENCY_FUND',
@@ -269,9 +272,83 @@ export const HouseholdOSView = () => {
       });
       if (res.ok) {
         setShowAddLoan(false);
+        setNewLoan({
+          loan_name: '',
+          loan_type: 'HOME_LOAN',
+          lender_name: '',
+          principal_amount: '',
+          outstanding_balance: '',
+          annual_interest_rate: '8.5',
+          tenure_months: '240',
+          start_date: new Date().toISOString().split('T')[0]
+        });
+        toast.success('Loan added successfully.');
         loadLoans();
       }
     } catch (err) { console.error(err); }
+  };
+
+  const handleUpdateLoan = async (e) => {
+    e.preventDefault();
+    if (!editingLoan) return;
+    try {
+      const res = await authFetch(`/api/loans/${editingLoan.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          loan_name: editingLoan.loan_name,
+          loan_type: editingLoan.loan_type,
+          lender_name: editingLoan.lender_name,
+          principal_amount: parseFloat(editingLoan.principal_amount),
+          outstanding_balance: parseFloat(editingLoan.outstanding_balance),
+          annual_interest_rate: parseFloat(editingLoan.annual_interest_rate),
+          tenure_months: parseInt(editingLoan.tenure_months),
+          start_date: editingLoan.start_date
+        })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setEditingLoan(null);
+        toast.success('Loan updated successfully.');
+        await loadLoans();
+        if (selectedLoan?.id === updated.id) {
+          setSelectedLoan(updated);
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || 'Failed to update loan');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error updating loan');
+    }
+  };
+
+  const handleDeleteLoan = async (loanId, e) => {
+    if (e) e.stopPropagation();
+    const ok = await confirm({
+      title: 'Delete Loan',
+      message: 'Are you sure you want to delete this loan? Associated amortization schedules will be removed.',
+      confirmText: 'Delete Loan',
+      isDanger: true
+    });
+    if (!ok) return;
+
+    try {
+      const res = await authFetch(`/api/loans/${loanId}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Loan deleted.');
+        if (selectedLoan?.id === loanId) {
+          setSelectedLoan(null);
+        }
+        await loadLoans();
+      } else {
+        toast.error('Failed to delete loan');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error deleting loan');
+    }
   };
 
   const handleAddGoal = async (e) => {
@@ -289,9 +366,72 @@ export const HouseholdOSView = () => {
       });
       if (res.ok) {
         setShowAddGoal(false);
+        setNewGoal({
+          name: '',
+          category: 'EMERGENCY_FUND',
+          target_amount: '',
+          current_amount: '',
+          monthly_contribution: '',
+          priority: 'HIGH'
+        });
+        toast.success('Financial goal created.');
         loadGoals();
       }
     } catch (err) { console.error(err); }
+  };
+
+  const handleUpdateGoal = async (e) => {
+    e.preventDefault();
+    if (!editingGoal) return;
+    try {
+      const res = await authFetch(`/api/goals/${editingGoal.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editingGoal.name,
+          category: editingGoal.category,
+          target_amount: parseFloat(editingGoal.target_amount),
+          current_amount: parseFloat(editingGoal.current_amount || 0),
+          monthly_contribution: parseFloat(editingGoal.monthly_contribution || 0),
+          priority: editingGoal.priority
+        })
+      });
+      if (res.ok) {
+        setEditingGoal(null);
+        toast.success('Goal updated successfully.');
+        loadGoals();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || 'Failed to update goal');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error updating goal');
+    }
+  };
+
+  const handleDeleteGoal = async (goalId, e) => {
+    if (e) e.stopPropagation();
+    const ok = await confirm({
+      title: 'Delete Financial Goal',
+      message: 'Are you sure you want to delete this financial goal?',
+      confirmText: 'Delete Goal',
+      isDanger: true
+    });
+    if (!ok) return;
+
+    try {
+      const res = await authFetch(`/api/goals/${goalId}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Goal deleted.');
+        loadGoals();
+      } else {
+        toast.error('Failed to delete goal');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error deleting goal');
+    }
   };
 
   const handleAddSplit = async (e) => {
@@ -419,7 +559,7 @@ export const HouseholdOSView = () => {
           <div>
             <div className="text-[10px] font-bold uppercase text-[#8B978F]">Combined Net Worth</div>
             <div className="text-sm font-bold text-[#3F8F5E] tabular-nums">
-              {formatCurrency(householdData?.combined_net_worth || 1872450)}
+              {formatCurrency(householdData?.combined_net_worth || 0)}
             </div>
           </div>
         </div>
@@ -467,7 +607,7 @@ export const HouseholdOSView = () => {
             }`}>
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B978F]">Combined Net Worth</span>
               <h3 className="text-xl font-bold tabular-nums text-[#3F8F5E] mt-2">
-                {formatCurrency(householdData?.combined_net_worth || 1872450)}
+                {formatCurrency(householdData?.combined_net_worth || 0)}
               </h3>
               <span className="text-[10px] text-[#8B978F] mt-1 font-medium">Across all family accounts</span>
             </div>
@@ -477,7 +617,7 @@ export const HouseholdOSView = () => {
             }`}>
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B978F]">Shared Liquid Assets</span>
               <h3 className="text-xl font-bold tabular-nums mt-2">
-                {formatCurrency(householdData?.shared_net_worth || 96378.45)}
+                {formatCurrency(householdData?.shared_net_worth || 0)}
               </h3>
               <span className="text-[10px] text-[#8B978F] mt-1 font-medium">Excludes private accounts</span>
             </div>
@@ -487,7 +627,7 @@ export const HouseholdOSView = () => {
             }`}>
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B978F]">Total Assets</span>
               <h3 className="text-xl font-bold tabular-nums text-[#3F8F5E] mt-2">
-                {formatCurrency(householdData?.total_assets || 1920000)}
+                {formatCurrency(householdData?.total_assets || 0)}
               </h3>
               <span className="text-[10px] text-[#8B978F] mt-1 font-medium">Bank + FDs + Investments</span>
             </div>
@@ -497,7 +637,7 @@ export const HouseholdOSView = () => {
             }`}>
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B978F]">Active Liabilities</span>
               <h3 className="text-xl font-bold tabular-nums mt-2">
-                {formatCurrency(householdData?.total_liabilities || 47550)}
+                {formatCurrency(householdData?.total_liabilities || 0)}
               </h3>
               <span className="text-[10px] text-[#8B978F] mt-1 font-medium">Loans + Credit Facilities</span>
             </div>
@@ -573,23 +713,28 @@ export const HouseholdOSView = () => {
               </p>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-1">
-                {[
-                  { cat: 'Society Maintenance', amt: 4500 },
-                  { cat: 'Domestic Staff (Maid/Cook)', amt: 8500 },
-                  { cat: 'Groceries & Provisions', amt: 14200 },
-                  { cat: 'Electricity & Water', amt: 2650 },
-                  { cat: 'School & Tuition', amt: 12000 },
-                  { cat: 'Internet & Streaming', amt: 2499 }
-                ].map((item, idx) => (
-                  <div key={idx} className={`p-3.5 rounded-[10px] border flex flex-col justify-between ${
-                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
-                  }`}>
-                    <span className="text-[11px] text-[#8B978F] font-medium truncate">{item.cat}</span>
-                    <span className="text-base font-bold tabular-nums mt-1.5">
-                      {formatCurrency(item.amt)}
-                    </span>
-                  </div>
-                ))}
+                {(() => {
+                  const spending = householdData?.household_spending || {};
+                  const getCatSum = (keys) => keys.reduce((acc, k) => acc + (spending[k] || 0), 0);
+                  const commitmentItems = [
+                    { cat: 'Society Maintenance', amt: getCatSum(['Society Maintenance']) },
+                    { cat: 'Domestic Staff (Maid/Cook)', amt: getCatSum(['Domestic Help', 'Cook', 'Maid']) },
+                    { cat: 'Groceries & Provisions', amt: getCatSum(['Groceries', 'Milk']) },
+                    { cat: 'Electricity & Water', amt: getCatSum(['Electricity', 'Gas', 'Water']) },
+                    { cat: 'School & Tuition', amt: getCatSum(['School', 'Tuition']) },
+                    { cat: 'Internet & Streaming', amt: getCatSum(['Internet']) }
+                  ];
+                  return commitmentItems.map((item, idx) => (
+                    <div key={idx} className={`p-3.5 rounded-[10px] border flex flex-col justify-between ${
+                      isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                    }`}>
+                      <span className="text-[11px] text-[#8B978F] font-medium truncate">{item.cat}</span>
+                      <span className="text-base font-bold tabular-nums mt-1.5">
+                        {formatCurrency(item.amt)}
+                      </span>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           </div>
@@ -631,7 +776,28 @@ export const HouseholdOSView = () => {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-xs">{l.loan_name}</span>
-                      <Badge variant="brown" size="xs">{l.annual_interest_rate}% p.a.</Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="brown" size="xs">{l.annual_interest_rate}% p.a.</Badge>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingLoan({ ...l });
+                          }}
+                          className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 text-[#8B978F] hover:text-[#1D2822] dark:hover:text-white transition-colors"
+                          title="Edit Loan"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteLoan(l.id, e)}
+                          className="p-1 rounded hover:bg-rose-500/10 text-[#8B978F] hover:text-rose-500 transition-colors"
+                          title="Delete Loan"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
                     <div className="text-base font-bold tabular-nums mt-2">
                       {formatCurrency(parseFloat(l.outstanding_balance || l.principal_amount))}
@@ -653,7 +819,27 @@ export const HouseholdOSView = () => {
                       <h4 className="text-base font-bold">{selectedLoan.loan_name}</h4>
                       <span className="text-xs text-[#8B978F]">{selectedLoan.lender_name} · Started {selectedLoan.start_date}</span>
                     </div>
-                    <Badge variant="verified">Reducing Balance</Badge>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingLoan({ ...selectedLoan })}
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-[8px] border border-[#E4E8E3] dark:border-[#2A352D] hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                        title="Edit Loan"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteLoan(selectedLoan.id, e)}
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-[8px] border border-rose-200 dark:border-rose-900/40 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
+                        title="Delete Loan"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>Delete</span>
+                      </button>
+                      <Badge variant="verified">Reducing Balance</Badge>
+                    </div>
                   </div>
 
                   {/* Prepayment Simulator Controls */}
@@ -699,8 +885,8 @@ export const HouseholdOSView = () => {
 
                     {prepaymentSim && (
                       <div className="p-3 rounded-[10px] bg-[#E2F1E8] text-[#285A3A] text-xs font-medium space-y-1">
-                        <div>Estimated Interest Saved: <strong>{formatCurrency(prepaymentSim.interest_saved || 124500)}</strong></div>
-                        <div>Tenure Reduced by: <strong>{prepaymentSim.months_saved || 24} months</strong></div>
+                        <div>Estimated Interest Saved: <strong>{formatCurrency(prepaymentSim.interest_saved || 0)}</strong></div>
+                        <div>Tenure Reduced by: <strong>{prepaymentSim.months_saved || 0} months</strong></div>
                       </div>
                     )}
                   </div>
@@ -728,39 +914,105 @@ export const HouseholdOSView = () => {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {goals.map(g => {
-              const current = parseFloat(g.current_amount || 0);
-              const target = parseFloat(g.target_amount || 1);
-              const pct = Math.min(100, Math.round((current / target) * 100));
+          {/* Emergency Runway Assessment Card */}
+          {emergencyFund && (
+            <div className={`p-6 rounded-[16px] border flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 ${
+              isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
+            }`}>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-[#3F8F5E]" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#8B978F]">Emergency Reserve Runway</span>
+                  <Badge variant={emergencyFund.status === 'EXCELLENT' ? 'verified' : emergencyFund.status === 'MODERATE' ? 'brand' : 'brown'}>
+                    {emergencyFund.status || 'UNASSESSED'}
+                  </Badge>
+                </div>
+                <div className="text-2xl font-bold tracking-tight mt-1">
+                  {emergencyFund.coverage_months || 0} <span className="text-sm font-normal text-[#8B978F]">Months Runway</span>
+                </div>
+                <p className="text-xs text-[#8B978F]">
+                  Liquid reserves cover your essential monthly burn (expenses + EMIs) of {formatCurrency(emergencyFund.total_monthly_burn || 0)}/mo.
+                </p>
+              </div>
 
-              return (
-                <div key={g.id} className={`p-5 rounded-[16px] border flex flex-col justify-between ${
-                  isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
-                }`}>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold text-xs">{g.name}</span>
-                      <Badge variant="brown" size="xs">{g.category}</Badge>
-                    </div>
-
-                    <div className="text-lg font-bold tabular-nums mt-3">
-                      {formatCurrency(current)} <span className="text-xs font-normal text-[#8B978F]">/ {formatCurrency(target)}</span>
-                    </div>
-
-                    <div className="w-full h-1.5 rounded-full bg-black/5 dark:bg-white/10 my-3 overflow-hidden">
-                      <div className="h-full bg-[#3F8F5E] rounded-full transition-all" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-[#8B978F] pt-3 border-t border-[#E4E8E3]/20">
-                    <span>{pct}% Completed</span>
-                    <span>+{formatCurrency(g.monthly_contribution || 0)} / mo</span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto">
+                <div className={`p-3 rounded-[10px] border ${isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'}`}>
+                  <span className="text-[10px] uppercase font-bold text-[#8B978F]">Liquid Reserves</span>
+                  <div className="text-sm font-bold tabular-nums mt-0.5">{formatCurrency(emergencyFund.liquid_reserves || 0)}</div>
+                </div>
+                <div className={`p-3 rounded-[10px] border ${isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'}`}>
+                  <span className="text-[10px] uppercase font-bold text-[#8B978F]">Target (6 Months)</span>
+                  <div className="text-sm font-bold tabular-nums mt-0.5">{formatCurrency(emergencyFund.recommended_buffer_6m || 0)}</div>
+                </div>
+                <div className={`p-3 rounded-[10px] border ${isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'}`}>
+                  <span className="text-[10px] uppercase font-bold text-[#8B978F]">Shortfall</span>
+                  <div className={`text-sm font-bold tabular-nums mt-0.5 ${(emergencyFund.shortfall || 0) > 0 ? 'text-amber-500' : 'text-[#3F8F5E]'}`}>
+                    {formatCurrency(emergencyFund.shortfall || 0)}
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            </div>
+          )}
+
+          {goals.length === 0 ? (
+            <div className={`p-8 rounded-[16px] border text-center text-xs text-[#8B978F] ${
+              isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3]'
+            }`}>
+              No financial goals configured yet. Click "Add Goal" to set emergency buffers, vacation funds, or milestone targets.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {goals.map(g => {
+                const current = parseFloat(g.current_amount || 0);
+                const target = parseFloat(g.target_amount || 1);
+                const pct = Math.min(100, Math.round((current / target) * 100));
+
+                return (
+                  <div key={g.id} className={`p-5 rounded-[16px] border flex flex-col justify-between ${
+                    isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] shadow-xs'
+                  }`}>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-bold text-xs">{g.name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="brown" size="xs">{g.category}</Badge>
+                          <button
+                            type="button"
+                            onClick={() => setEditingGoal({ ...g })}
+                            className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 text-[#8B978F] hover:text-[#1D2822] dark:hover:text-white transition-colors"
+                            title="Edit Goal"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteGoal(g.id, e)}
+                            className="p-1 rounded hover:bg-rose-500/10 text-[#8B978F] hover:text-rose-500 transition-colors"
+                            title="Delete Goal"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="text-lg font-bold tabular-nums mt-3">
+                        {formatCurrency(current)} <span className="text-xs font-normal text-[#8B978F]">/ {formatCurrency(target)}</span>
+                      </div>
+
+                      <div className="w-full h-1.5 rounded-full bg-black/5 dark:bg-white/10 my-3 overflow-hidden">
+                        <div className="h-full bg-[#3F8F5E] rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-[#8B978F] pt-3 border-t border-[#E4E8E3]/20">
+                      <span>{pct}% Completed</span>
+                      <span>+{formatCurrency(g.monthly_contribution || 0)} / mo</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1054,6 +1306,117 @@ export const HouseholdOSView = () => {
         </div>
       )}
 
+      {/* Edit Loan Modal */}
+      {editingLoan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs" onClick={() => setEditingLoan(null)} />
+          <div className={`relative w-full max-w-lg rounded-[16px] p-6 border shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-150 ${
+            isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] text-[#1D2822]'
+          }`}>
+            <div className="flex items-center justify-between pb-3 border-b border-[#E4E8E3]/20 mb-4">
+              <h3 className="text-sm font-bold">Edit Loan Facility</h3>
+              <button type="button" onClick={() => setEditingLoan(null)} className="border-0 bg-transparent text-[#8B978F] cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateLoan} className="grid grid-cols-2 gap-4 text-xs">
+              <div className="col-span-2">
+                <label className="font-semibold block mb-1">Loan Name</label>
+                <input
+                  type="text"
+                  required
+                  value={editingLoan.loan_name || ''}
+                  onChange={e => setEditingLoan({ ...editingLoan, loan_name: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="font-semibold block mb-1">Lender Bank</label>
+                <input
+                  type="text"
+                  required
+                  value={editingLoan.lender_name || ''}
+                  onChange={e => setEditingLoan({ ...editingLoan, lender_name: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="font-semibold block mb-1">Loan Type</label>
+                <select
+                  value={editingLoan.loan_type || 'HOME_LOAN'}
+                  onChange={e => setEditingLoan({ ...editingLoan, loan_type: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-[8px] border outline-none cursor-pointer ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
+                >
+                  <option value="HOME_LOAN">Home Loan</option>
+                  <option value="CAR_LOAN">Car Loan</option>
+                  <option value="PERSONAL_LOAN">Personal Loan</option>
+                  <option value="EDUCATION_LOAN">Education Loan</option>
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold block mb-1">Principal Sanctioned (₹)</label>
+                <input
+                  type="number"
+                  required
+                  value={editingLoan.principal_amount ?? ''}
+                  onChange={e => setEditingLoan({ ...editingLoan, principal_amount: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="font-semibold block mb-1">Outstanding Balance (₹)</label>
+                <input
+                  type="number"
+                  required
+                  value={editingLoan.outstanding_balance ?? ''}
+                  onChange={e => setEditingLoan({ ...editingLoan, outstanding_balance: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="font-semibold block mb-1">Interest Rate (% p.a.)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={editingLoan.annual_interest_rate ?? ''}
+                  onChange={e => setEditingLoan({ ...editingLoan, annual_interest_rate: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="font-semibold block mb-1">Tenure (Months)</label>
+                <input
+                  type="number"
+                  required
+                  value={editingLoan.tenure_months ?? ''}
+                  onChange={e => setEditingLoan({ ...editingLoan, tenure_months: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
+                />
+              </div>
+              <div className="col-span-2 pt-4 border-t border-[#E4E8E3]/20 flex justify-end gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setEditingLoan(null)}>Cancel</Button>
+                <Button variant="primary" size="sm" type="submit">Update Loan</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Add Goal Modal */}
       {showAddGoal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1109,6 +1472,88 @@ export const HouseholdOSView = () => {
               <div className="pt-4 border-t border-[#E4E8E3]/20 flex justify-end gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setShowAddGoal(false)}>Cancel</Button>
                 <Button variant="primary" size="sm" type="submit">Save Goal</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Goal Modal */}
+      {editingGoal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs" onClick={() => setEditingGoal(null)} />
+          <div className={`relative w-full max-w-md rounded-[16px] p-6 border shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-150 ${
+            isDark ? 'bg-[#171E19] border-[#2A352D]' : 'bg-[#FFFFFF] border-[#E4E8E3] text-[#1D2822]'
+          }`}>
+            <div className="flex items-center justify-between pb-3 border-b border-[#E4E8E3]/20 mb-4">
+              <h3 className="text-sm font-bold">Edit Financial Goal</h3>
+              <button type="button" onClick={() => setEditingGoal(null)} className="border-0 bg-transparent text-[#8B978F] cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateGoal} className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold block mb-1">Goal Name</label>
+                <input
+                  type="text"
+                  required
+                  value={editingGoal.name || ''}
+                  onChange={e => setEditingGoal({ ...editingGoal, name: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="font-semibold block mb-1">Category</label>
+                <input
+                  type="text"
+                  value={editingGoal.category || ''}
+                  onChange={e => setEditingGoal({ ...editingGoal, category: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold block mb-1">Target Amount (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    value={editingGoal.target_amount ?? ''}
+                    onChange={e => setEditingGoal({ ...editingGoal, target_amount: e.target.value })}
+                    className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                      isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold block mb-1">Current Saved (₹)</label>
+                  <input
+                    type="number"
+                    value={editingGoal.current_amount ?? ''}
+                    onChange={e => setEditingGoal({ ...editingGoal, current_amount: e.target.value })}
+                    className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                      isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                    }`}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="font-semibold block mb-1">Monthly Contribution (₹)</label>
+                <input
+                  type="number"
+                  value={editingGoal.monthly_contribution ?? ''}
+                  onChange={e => setEditingGoal({ ...editingGoal, monthly_contribution: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-[8px] border outline-none ${
+                    isDark ? 'bg-[#1C251F] border-[#2A352D]' : 'bg-[#FBFCFA] border-[#E4E8E3]'
+                  }`}
+                />
+              </div>
+              <div className="pt-4 border-t border-[#E4E8E3]/20 flex justify-end gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setEditingGoal(null)}>Cancel</Button>
+                <Button variant="primary" size="sm" type="submit">Update Goal</Button>
               </div>
             </form>
           </div>
