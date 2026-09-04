@@ -15,7 +15,7 @@ export const FinanceProvider = ({ children }) => {
     localStorage.removeItem('token');
   }, []);
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -37,9 +37,9 @@ export const FinanceProvider = ({ children }) => {
     } catch (err) {
       return { success: false, error: err.message };
     }
-  };
+  }, []);
 
-  const register = async (name, email, password) => {
+  const register = useCallback(async (name, email, password) => {
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
@@ -60,7 +60,7 @@ export const FinanceProvider = ({ children }) => {
     } catch (err) {
       return { success: false, error: err.message };
     }
-  };
+  }, []);
 
   const authFetch = useCallback(async (url, options = {}) => {
     const headers = { ...options.headers };
@@ -275,12 +275,12 @@ export const FinanceProvider = ({ children }) => {
     }
   };
 
-  const dismissUploadSnackbar = () => {
+  const dismissUploadSnackbar = useCallback(() => {
     setActiveUpload(null);
-  };
+  }, []);
 
   // Rule additions
-  const addRule = async (keyword, category) => {
+  const addRule = useCallback(async (keyword, category) => {
     const res = await authFetch('/api/rules', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -295,14 +295,14 @@ export const FinanceProvider = ({ children }) => {
       const newRule = await res.json();
       setRules(prev => [...prev, newRule]);
     }
-  };
+  }, [authFetch]);
 
-  const deleteRule = async (id) => {
+  const deleteRule = useCallback(async (id) => {
     const res = await authFetch(`/api/rules/${id}`, { method: 'DELETE' });
     if (res.ok) {
       setRules(prev => prev.filter(r => r.id !== id));
     }
-  };
+  }, [authFetch]);
 
   const processedTransactions = useMemo(() => (
     transactions.map(tx => {
@@ -315,41 +315,75 @@ export const FinanceProvider = ({ children }) => {
 
   const API_BASE_URL = '';
 
+  const contextValue = useMemo(() => ({
+    API_BASE_URL,
+    user,
+    token,
+    login,
+    register,
+    logout,
+    authFetch,
+    accounts,
+    transactions: processedTransactions,
+    rawTransactions: transactions,
+    cards,
+    statements,
+    banks,
+    categories,
+    spendingReport,
+    savingsCashflow,
+    creditCardSummary,
+    netWorth,
+    subscriptions,
+    cashflow,
+    loading,
+    rules,
+    activeUpload,
+    fetchData,
+    startDocumentUpload,
+    dismissUploadSnackbar,
+    addRule,
+    deleteRule,
+    setTransactions,
+    ledgerFocus,
+    openInLedger,
+    clearLedgerFocus
+  }), [
+    user,
+    token,
+    login,
+    register,
+    logout,
+    authFetch,
+    accounts,
+    processedTransactions,
+    transactions,
+    cards,
+    statements,
+    banks,
+    categories,
+    spendingReport,
+    savingsCashflow,
+    creditCardSummary,
+    netWorth,
+    subscriptions,
+    cashflow,
+    loading,
+    rules,
+    activeUpload,
+    fetchData,
+    startDocumentUpload,
+    dismissUploadSnackbar,
+    addRule,
+    deleteRule,
+    setTransactions,
+    ledgerFocus,
+    openInLedger,
+    clearLedgerFocus
+  ]);
+
   return (
-    <FinanceContext.Provider value={{
-      API_BASE_URL,
-      user,
-      token,
-      login,
-      register,
-      logout,
-      authFetch,
-      accounts,
-      transactions: processedTransactions,
-      rawTransactions: transactions,
-      cards,
-      statements,
-      banks,
-      categories,
-      spendingReport,
-      savingsCashflow,
-      creditCardSummary,
-      netWorth,
-      subscriptions,
-      cashflow,
-      loading,
-      rules,
-      activeUpload,
-      fetchData,
-      startDocumentUpload,
-      dismissUploadSnackbar,
-      addRule,
-      deleteRule,
-      setTransactions,
-      ledgerFocus,
-      openInLedger,
-      clearLedgerFocus
-    }}>
+    <FinanceContext.Provider value={contextValue}>
       {children}
     </FinanceContext.Provider>
   );

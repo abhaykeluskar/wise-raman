@@ -255,3 +255,17 @@ input:focus, textarea:focus, select:focus {
 input::placeholder, textarea::placeholder {
   color: var(--wr-muted);
 }
+
+/* ========================================================================= */
+/* --- Performance Utility Classes ---                                       */
+/* ========================================================================= */
+
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 48px;
+}
+
+.will-change-scroll {
+  will-change: scroll-position;
+}
+
