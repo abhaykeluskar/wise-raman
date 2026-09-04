@@ -104,38 +104,69 @@ def is_safe_ollama_url(url: str) -> bool:
     return True
 
 
-def llm_options(num_predict: int, num_ctx: int | None = None) -> dict:
-    return {
-        "temperature": settings.LLM_TEMPERATURE,
+def llm_options(
+    num_predict: int,
+    num_ctx: int | None = None,
+    enable_thinking: bool | None = None,
+    temperature: float | None = None,
+) -> dict:
+    thinking = enable_thinking if enable_thinking is not None else settings.LLM_ENABLE_THINKING
+    opts = {
         "num_ctx": num_ctx if num_ctx is not None else settings.LLM_NUM_CTX,
         "num_predict": num_predict,
     }
+    if thinking:
+        # Prevent runaway loops in small models with calibrated sampling
+        opts["temperature"] = settings.THINKING_TEMPERATURE
+        opts["top_p"] = settings.THINKING_TOP_P
+        opts["min_p"] = settings.THINKING_MIN_P
+    else:
+        opts["temperature"] = temperature if temperature is not None else settings.LLM_TEMPERATURE
+    return opts
 
 
 def ollama_generate(
     prompt: str,
     *,
+    model: str | None = None,
     system: str | None = None,
     fmt=None,
     num_predict: int = RAG_NUM_PREDICT,
     timeout: int = 90,
+    enable_thinking: bool | None = None,
+    temperature: float | None = None,
 ):
     active_url = find_working_ollama_url()
+    target_model = model or settings.LLM_MODEL
+    opts = {
+        **llm_options(num_predict, enable_thinking=enable_thinking, temperature=temperature),
+        "num_gpu": -1,
+    }
     payload = {
-        "model": settings.LLM_MODEL,
+        "model": target_model,
         "prompt": prompt,
         "stream": False,
         "keep_alive": KEEP_ALIVE,
-        "options": {
-            **llm_options(num_predict),
-            "num_gpu": -1,
-        },
+        "options": opts,
     }
     if system:
         payload["system"] = system
     if fmt is not None:
         payload["format"] = fmt
-    return _session.post(f"{active_url}/api/generate", json=payload, timeout=timeout)
+
+    try:
+        res = _session.post(f"{active_url}/api/generate", json=payload, timeout=timeout)
+        # Automatic fallback if primary model is not installed/found
+        if res.status_code == 404 and target_model != settings.LLM_FALLBACK_MODEL and settings.LLM_FALLBACK_MODEL:
+            logger.warning(
+                f"Model {target_model} not found in Ollama (HTTP 404). Falling back to {settings.LLM_FALLBACK_MODEL}."
+            )
+            payload["model"] = settings.LLM_FALLBACK_MODEL
+            res = _session.post(f"{active_url}/api/generate", json=payload, timeout=timeout)
+        return res
+    except Exception as e:
+        logger.error(f"Error calling ollama_generate with model {target_model}: {e}")
+        raise
 
 
 def query_ollama_json(
@@ -147,13 +178,14 @@ def query_ollama_json(
 ) -> Dict[str, Any]:
     """Execute a structured JSON prompt against Ollama and parse result."""
     active_url = find_working_ollama_url()
+    target_model = model or settings.LLM_MODEL
     payload = {
-        "model": model or settings.LLM_MODEL,
+        "model": target_model,
         "prompt": prompt,
         "stream": False,
         "keep_alive": KEEP_ALIVE,
         "options": {
-            **llm_options(RAG_NUM_PREDICT),
+            **llm_options(RAG_NUM_PREDICT, enable_thinking=False, temperature=0.1),
             "num_gpu": -1,
         },
     }
@@ -165,6 +197,13 @@ def query_ollama_json(
         payload["format"] = "json"
 
     res = _session.post(f"{active_url}/api/generate", json=payload, timeout=timeout)
+    if res.status_code == 404 and target_model != settings.LLM_FALLBACK_MODEL and settings.LLM_FALLBACK_MODEL:
+        logger.warning(
+            f"Model {target_model} not found for JSON query. Falling back to {settings.LLM_FALLBACK_MODEL}."
+        )
+        payload["model"] = settings.LLM_FALLBACK_MODEL
+        res = _session.post(f"{active_url}/api/generate", json=payload, timeout=timeout)
+
     res.raise_for_status()
     raw = res.json().get("response", "{}")
     raw = raw.strip()
@@ -181,7 +220,9 @@ async def stream_ollama_chat(
     messages: List[Dict[str, str]],
     system: Optional[str] = None,
     num_predict: int = RAG_NUM_PREDICT,
-    temperature: float = 0.0,
+    temperature: Optional[float] = None,
+    model: Optional[str] = None,
+    enable_thinking: Optional[bool] = None,
 ) -> AsyncGenerator[str, None]:
     """Streams token chunks from Ollama chat API using Server-Sent Events / async stream."""
     active_url = find_working_ollama_url()
@@ -190,21 +231,37 @@ async def stream_ollama_chat(
         chat_messages.append({"role": "system", "content": system})
     chat_messages.extend(messages)
 
+    target_model = model or settings.LLM_MODEL
+    opts = {
+        **llm_options(num_predict, enable_thinking=enable_thinking, temperature=temperature),
+        "num_gpu": -1,
+    }
+
     payload = {
-        "model": settings.LLM_MODEL,
+        "model": target_model,
         "messages": chat_messages,
         "stream": True,
         "keep_alive": KEEP_ALIVE,
-        "options": {
-            "temperature": temperature,
-            "num_ctx": settings.LLM_NUM_CTX,
-            "num_predict": num_predict,
-            "num_gpu": -1,
-        },
+        "options": opts,
     }
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         async with client.stream("POST", f"{active_url}/api/chat", json=payload) as response:
+            if response.status_code == 404 and target_model != settings.LLM_FALLBACK_MODEL and settings.LLM_FALLBACK_MODEL:
+                logger.warning(f"Model {target_model} not found for stream. Falling back to {settings.LLM_FALLBACK_MODEL}.")
+                payload["model"] = settings.LLM_FALLBACK_MODEL
+                async with client.stream("POST", f"{active_url}/api/chat", json=payload) as fb_response:
+                    async for line in fb_response.aiter_lines():
+                        if line:
+                            try:
+                                chunk = json.loads(line)
+                                content = chunk.get("message", {}).get("content", "")
+                                if content:
+                                    yield content
+                            except Exception:
+                                continue
+                return
+
             async for line in response.aiter_lines():
                 if line:
                     try:
@@ -237,15 +294,27 @@ def ensure_models_exist():
             )
             logger.info(f"Embedding model {embed_model} pulled successfully.")
 
+        # Check primary model first; if fails, ensure fallback model
         llm_model = settings.LLM_MODEL
-        if llm_model not in installed_models and f"{llm_model}:latest" not in installed_models:
-            logger.info(f"Pulling LLM model: {llm_model}. This might take a few minutes...")
-            _session.post(
+        fallback_model = settings.LLM_FALLBACK_MODEL
+        has_primary = (llm_model in installed_models) or (f"{llm_model}:latest" in installed_models)
+        has_fallback = (fallback_model in installed_models) or (f"{fallback_model}:latest" in installed_models)
+
+        if not has_primary and not has_fallback:
+            logger.info(f"Pulling LLM model: {llm_model}...")
+            pull_res = _session.post(
                 f"{active_url}/api/pull",
                 json={"name": llm_model, "stream": False},
                 timeout=1800,
             )
-            logger.info(f"LLM model {llm_model} pulled successfully.")
+            if pull_res.status_code != 200 and fallback_model:
+                logger.info(f"Pulling fallback LLM model: {fallback_model}...")
+                _session.post(
+                    f"{active_url}/api/pull",
+                    json={"name": fallback_model, "stream": False},
+                    timeout=1800,
+                )
+            logger.info("LLM model ready.")
 
         return True
     except Exception as e:

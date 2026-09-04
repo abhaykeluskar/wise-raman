@@ -55,29 +55,42 @@ class FinancialCopilotAgent:
             }
 
         # Step 4: LLM Synthesis with strict grounded evidence prompt
-        system_prompt = (
-            "You are WiseRaman, an expert personal financial intelligence assistant. "
-            "You MUST explain the pre-calculated numbers from the Immutable Evidence Package. "
-            "STRICT RULES:\n"
-            "1. NEVER calculate or recalculate numbers yourself. The 'result' and 'count' fields are verified facts.\n"
-            "2. State the final total/count clearly in Indian Rupees (₹) with comma formatting.\n"
-            "3. Mention 1-3 prominent merchants or dates from the evidence list.\n"
-            "4. Be concise and professional. Respond in 2-3 short sentences."
-        )
+        if operation == "LOAN_AFFORDABILITY":
+            system_prompt = (
+                "You are WiseRaman Financial Copilot, an expert personal financial advisory assistant. "
+                "You explain loan and EMI affordability strictly using the pre-calculated numbers from the Evidence Package and Indian banking FOIR rules.\n"
+                "STRICT RULES:\n"
+                "1. State the calculated monthly EMI, total interest, and verified monthly income.\n"
+                "2. State the FOIR (Fixed Obligation to Income Ratio) percentage clearly.\n"
+                "3. Deliver a clear, objective verdict based on standard 40%-50% bank lending rules.\n"
+                "4. State the maximum loan amount and EMI the user can safely afford.\n"
+                "5. Respond in 3-4 concise, professional sentences in Markdown."
+            )
+        else:
+            system_prompt = (
+                "You are WiseRaman Financial Copilot, an expert personal financial intelligence assistant. "
+                "You explain and synthesize verified financial evidence provided to you. You never invent figures or perform raw ledger reconciliation.\n"
+                "STRICT RULES:\n"
+                "1. NEVER calculate or recalculate numbers yourself. All metrics, aggregates, and calculations in the Evidence Package are verified facts.\n"
+                "2. State amounts clearly in Indian Rupees (₹) with standard comma formatting.\n"
+                "3. Mention prominent merchants, top categories, or detected spending anomalies when relevant.\n"
+                "4. Be concise, objective, and professional. Respond in 2-3 short sentences."
+            )
 
         user_prompt = f"""User Question: {query}
 
 Verified Evidence Package:
 {safe_evidence_str}
 
-Please summarize and answer the user's question directly from the verified calculation."""
+Please synthesize and answer the user's question directly from the verified Evidence Package."""
 
         try:
             res = ollama_generate(
                 prompt=user_prompt,
                 system=system_prompt,
-                num_predict=320,
+                num_predict=380,
                 timeout=45,
+                enable_thinking=False,  # Keep explanation fast and non-repetitive
             )
             if res.status_code == 200:
                 llm_response = res.json().get("response", "").strip()
@@ -91,21 +104,41 @@ Please summarize and answer the user's question directly from the verified calcu
             logger.warning(f"Ollama copilot generation failed: {e}. Falling back to deterministic summary.")
 
         # Fallback deterministic summary if Ollama is offline or times out
-        if operation == "COUNT":
+        if operation == "LOAN_AFFORDABILITY" and evidence_dict.get("loan_analysis"):
+            la = evidence_dict["loan_analysis"]
+            summary = (
+                f"For a home loan of ₹{la['principal']:,.2f} at {la['annual_rate']}% for {la['tenure_years']:.0f} years, "
+                f"your monthly EMI would be ₹{la['monthly_emi']:,.2f} (Total Interest: ₹{la['total_interest']:,.2f}). "
+                f"Based on your verified net monthly income of ₹{la['monthly_net_income']:,.2f}, this EMI represents {la['foir_percentage']:.1f}% "
+                f"of your in-hand earnings (banks cap EMIs at 40% to 50% FOIR). "
+                f"**Verdict:** {la['verdict']} "
+                f"At a safe 40% FOIR ceiling, your maximum recommended loan amount is approximately ₹{la['max_affordable_loan']:,.2f} "
+                f"(supporting an EMI of ₹{la['max_recommended_emi']:,.2f}/month)."
+            )
+        elif operation == "COUNT":
             summary = f"Based on your verified statements, you made {int(result_amt)} transactions for {period_str}."
         elif operation == "MAX":
-            summary = f"Your highest expense for {period_str} was ₹{result_amt:,.2f}."
+            flow_label = "income" if plan.get("filters", {}).get("flow") == "INCOME" else "expense"
+            summary = f"Your highest {flow_label} for {period_str} was ₹{result_amt:,.2f}."
         elif operation == "MIN":
-            summary = f"Your smallest expense for {period_str} was ₹{result_amt:,.2f}."
+            flow_label = "income" if plan.get("filters", {}).get("flow") == "INCOME" else "expense"
+            summary = f"Your smallest {flow_label} for {period_str} was ₹{result_amt:,.2f}."
         elif operation == "AVG":
-            summary = f"Your average spend for {period_str} was ₹{result_amt:,.2f} across {txn_count} transactions."
+            flow_label = "income" if plan.get("filters", {}).get("flow") == "INCOME" else "spend"
+            summary = f"Your average {flow_label} for {period_str} was ₹{result_amt:,.2f} across {txn_count} transactions."
         else:
-            summary = f"Based on your verified statements, your total spend for {period_str} was ₹{result_amt:,.2f} across {txn_count} transactions."
+            flow_label = "total income received" if plan.get("filters", {}).get("flow") == "INCOME" else "total spend"
+            summary = f"Based on your verified statements, your {flow_label} for {period_str} was ₹{result_amt:,.2f} across {txn_count} transactions."
 
         top_m = evidence_dict.get("top_merchants", [])
-        if top_m:
+        if top_m and operation != "LOAN_AFFORDABILITY":
+            source_label = "Top sources" if plan.get("filters", {}).get("flow") == "INCOME" else "Top spending"
             m_strs = [f"{m['merchant']} (₹{m['total']:,.2f})" for m in top_m[:2]]
-            summary += f" Top spending: {', '.join(m_strs)}."
+            summary += f" {source_label}: {', '.join(m_strs)}."
+
+        anomalies = evidence_dict.get("anomalies", [])
+        if anomalies and operation != "LOAN_AFFORDABILITY":
+            summary += f" (Note: {len(anomalies)} unusual transaction{'s' if len(anomalies) > 1 else ''} flagged)."
 
         return {
             "response": summary,

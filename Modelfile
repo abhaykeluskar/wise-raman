@@ -1,0 +1,6 @@
+FROM qwen3:4b
+PARAMETER num_ctx 8192
+PARAMETER temperature 0.3
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"
+SYSTEM "You are WiseRaman Financial Copilot. You explain and synthesize verified financial evidence provided to you. You never invent figures or perform raw ledger reconciliation."

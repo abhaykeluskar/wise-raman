@@ -3,7 +3,9 @@ import datetime
 import json
 import logging
 import re
+import statistics
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
@@ -11,6 +13,8 @@ from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from app.models import ReviewState, Transaction
+from app.services.anomaly_detector import detect_spending_anomalies
+from app.services.loans import calculate_emi
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +38,48 @@ class CalculationNode(BaseModel):
     period: str = "ALL_TIME"
 
 
+class FinancialMetrics(BaseModel):
+    total_inflow: float = 0.0
+    total_outflow: float = 0.0
+    net_flow: float = 0.0
+    transaction_count: int = 0
+    average_amount: float = 0.0
+    max_amount: float = 0.0
+    min_amount: float = 0.0
+    currency: str = "INR"
+
+
+class FinancialAggregates(BaseModel):
+    category_breakdown: List[Dict[str, Any]] = Field(default_factory=list)
+    top_merchants: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class LoanAffordabilityNode(BaseModel):
+    principal: float
+    annual_rate: float
+    tenure_months: int
+    tenure_years: float
+    monthly_emi: float
+    total_payment: float
+    total_interest: float
+    monthly_net_income: float
+    foir_percentage: float
+    max_recommended_emi: float
+    max_affordable_loan: float
+    status: str
+    verdict: str
+
+
 class EvidencePackage(BaseModel):
     question: str
     period: str
+    metrics: FinancialMetrics = Field(default_factory=FinancialMetrics)
+    aggregates: FinancialAggregates = Field(default_factory=FinancialAggregates)
+    anomalies: List[Dict[str, Any]] = Field(default_factory=list)
+    transaction_samples: List[EvidenceRecord] = Field(default_factory=list)
+    loan_analysis: Optional[LoanAffordabilityNode] = None
+
+    # Backwards-compatibility fields for legacy UI and tests
     calculation: CalculationNode
     evidence: List[EvidenceRecord] = Field(default_factory=list)
     top_merchants: List[Dict[str, Any]] = Field(default_factory=list)
@@ -73,6 +116,92 @@ MONTH_NAMES = {
 }
 
 
+def extract_loan_parameters(query: str) -> Optional[Dict[str, Any]]:
+    q = query.lower().replace(",", "")
+
+    # Check if query is asking about loan/house/car/borrowing affordability or EMI
+    loan_markers = [
+        "loan", "home loan", "house loan", "car loan", "personal loan",
+        "mortgage", "emi", "borrow", "afford an house", "afford a house",
+        "afford a home", "afford a flat", "afford an apartment", "afford a car",
+        "afford a loan", "afford an loan"
+    ]
+    is_loan_query = any(w in q for w in loan_markers) or (
+        ("afford" in q or "buy" in q) and any(w in q for w in ["interest", "lac", "lakh", "crore", "emi", "tenure", "years"])
+    )
+
+    if not is_loan_query:
+        return None
+
+    # 1. Extract Principal Amount
+    principal = None
+
+    # Check crore: e.g. "1.5 cr", "2 crore"
+    cr_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:cr|crore|crores)\b", q)
+    if cr_match:
+        principal = float(cr_match.group(1)) * 10_000_000
+
+    # Check lakh / lac: e.g. "60 lac", "60 lakh", "60l"
+    if not principal:
+        lakh_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:lac|lacs|lakh|lakhs|l)\b", q)
+        if lakh_match:
+            principal = float(lakh_match.group(1)) * 100_000
+
+    # Check thousand / k: e.g. "50k", "500 thousand"
+    if not principal:
+        k_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:k|thousand)\b", q)
+        if k_match:
+            principal = float(k_match.group(1)) * 1_000
+
+    # Check raw numeric amounts (e.g. 5000000)
+    if not principal:
+        raw_match = re.search(r"(?:loan of|loan for|amount of|borrow)?\s*(?:rs\.?|₹)?\s*(\d{5,10})\b", q)
+        if raw_match:
+            principal = float(raw_match.group(1))
+
+    # Fallback principal if loan detected but amount missing
+    if not principal:
+        principal = 5_000_000.0  # ₹50 Lakhs default
+
+    # 2. Extract Tenure
+    tenure_months = None
+    year_match = re.search(r"(\d+)\s*(?:years|year|yr|yrs)\b", q)
+    if year_match:
+        tenure_months = int(year_match.group(1)) * 12
+    else:
+        month_match = re.search(r"(\d+)\s*(?:months|month|mo|mos)\b", q)
+        if month_match:
+            tenure_months = int(month_match.group(1))
+
+    if not tenure_months:
+        if any(w in q for w in ["home", "house", "property", "flat", "apartment"]):
+            tenure_months = 240  # 20 years standard home loan
+        elif "car" in q:
+            tenure_months = 60  # 5 years standard auto loan
+        else:
+            tenure_months = 240 if principal >= 2_000_000 else 60
+
+    # 3. Extract Annual Interest Rate
+    rate = None
+    rate_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:%|percent|pct)\b", q)
+    if rate_match:
+        rate = float(rate_match.group(1))
+    else:
+        rate_words = re.search(r"interest(?:\s*rate)?(?:\s*of)?\s*(\d+(?:\.\d+)?)", q)
+        if rate_words:
+            rate = float(rate_words.group(1))
+
+    if not rate:
+        rate = 8.5  # standard current retail benchmark rate in India
+
+    return {
+        "principal": float(principal),
+        "annual_rate": float(rate),
+        "tenure_months": int(tenure_months),
+        "tenure_years": round(tenure_months / 12, 1),
+    }
+
+
 class FinancialQueryPlanner:
     """
     Translates NLP queries into deterministic SQL filters.
@@ -82,6 +211,15 @@ class FinancialQueryPlanner:
     def parse_intent(self, user_query: str) -> Dict[str, Any]:
         q = user_query.lower()
         filters: Dict[str, Any] = {}
+
+        # 0. Check for Loan / Affordability Planning intent
+        loan_params = extract_loan_parameters(user_query)
+        if loan_params:
+            return {
+                "intent": "LOAN_AFFORDABILITY",
+                "filters": {"loan_params": loan_params},
+                "period": f"{loan_params['tenure_years']:.0f} Years",
+            }
 
         # 1. Detect Operation
         if any(w in q for w in ["how many", "count", "number of", "how often"]):
@@ -182,6 +320,133 @@ class FinancialQueryPlanner:
         intent = plan.get("intent", "SUM")
         period = plan.get("period", "ALL_TIME")
 
+        # Handle Loan & EMI Affordability queries deterministically
+        if intent == "LOAN_AFFORDABILITY":
+            loan_params = filters.get("loan_params", {})
+            principal = float(loan_params.get("principal", 5_000_000.0))
+            annual_rate = float(loan_params.get("annual_rate", 8.5))
+            tenure_months = int(loan_params.get("tenure_months", 240))
+            tenure_years = float(loan_params.get("tenure_years", 20.0))
+
+            # Calculate exact monthly EMI using reducing balance amortization
+            monthly_emi = calculate_emi(principal, annual_rate, tenure_months)
+            total_payment = round(monthly_emi * tenure_months, 2)
+            total_interest = round(total_payment - principal, 2)
+
+            # Query verified income credits from the database
+            income_txs = (
+                db_session.query(Transaction)
+                .filter(
+                    Transaction.user_id == user_id,
+                    Transaction.amount > 0,
+                    Transaction.is_excluded_from_spending == False,
+                )
+                .order_by(desc(Transaction.date))
+                .all()
+            )
+
+            # Look for payroll / salary transactions
+            salary_credits = [
+                float(t.amount)
+                for t in income_txs
+                if (t.category and any(k in t.category.lower() for k in ["salary", "income", "payroll"]))
+                or (t.subcategory and "payroll" in t.subcategory.lower())
+                or (t.raw_narration and any(k in t.raw_narration.lower() for k in ["salary", "neftcr", "payroll", "bofa", "corp"]))
+            ]
+
+            if salary_credits:
+                monthly_net_income = round(float(statistics.median(salary_credits[:6])), 2)
+            elif income_txs:
+                recent_amounts = [float(t.amount) for t in income_txs[:6]]
+                monthly_net_income = round(float(statistics.mean(recent_amounts)), 2)
+            else:
+                monthly_net_income = 0.0
+
+            # FOIR (Fixed Obligation to Income Ratio)
+            if monthly_net_income > 0:
+                foir_pct = round((monthly_emi / monthly_net_income) * 100.0, 1)
+            else:
+                foir_pct = 0.0
+
+            # Max recommended EMI (40% FOIR)
+            max_recommended_emi_40 = round(monthly_net_income * 0.40, 2)
+
+            # Max affordable loan principal at 40% FOIR
+            if annual_rate > 0 and tenure_months > 0 and max_recommended_emi_40 > 0:
+                r_dec = Decimal(str(annual_rate)) / Decimal("12") / Decimal("100")
+                n_dec = tenure_months
+                factor = ((Decimal("1") + r_dec) ** n_dec - Decimal("1")) / (r_dec * ((Decimal("1") + r_dec) ** n_dec))
+                max_affordable_principal = round(float(Decimal(str(max_recommended_emi_40)) * factor), 2)
+            else:
+                max_affordable_principal = 0.0
+
+            if foir_pct <= 40.0 and monthly_net_income > 0:
+                status = "AFFORDABLE"
+                verdict = f"Affordable. Monthly EMI of ₹{monthly_emi:,.2f} is within safe banking guidelines ({foir_pct}% of income)."
+            elif foir_pct <= 50.0 and monthly_net_income > 0:
+                status = "STRETCHED"
+                verdict = f"Stretched. Monthly EMI of ₹{monthly_emi:,.2f} consumes {foir_pct}% of your income (at the 50% bank maximum ceiling)."
+            else:
+                status = "UNAFFORDABLE"
+                verdict = f"Unaffordable. Monthly EMI of ₹{monthly_emi:,.2f} consumes {foir_pct}% of verified income (exceeds bank 50% FOIR cap and risks rejection)."
+
+            loan_node = LoanAffordabilityNode(
+                principal=principal,
+                annual_rate=annual_rate,
+                tenure_months=tenure_months,
+                tenure_years=tenure_years,
+                monthly_emi=monthly_emi,
+                total_payment=total_payment,
+                total_interest=total_interest,
+                monthly_net_income=monthly_net_income,
+                foir_percentage=foir_pct,
+                max_recommended_emi=max_recommended_emi_40,
+                max_affordable_loan=max_affordable_principal,
+                status=status,
+                verdict=verdict,
+            )
+
+            calc_node = CalculationNode(
+                operation="LOAN_AFFORDABILITY",
+                field="monthly_emi",
+                filter_desc=f"Loan ₹{principal:,.0f} @ {annual_rate}% for {tenure_years:.0f}y",
+                result=monthly_emi,
+                count=len(income_txs),
+                period=f"{tenure_years:.0f} Years",
+            )
+
+            evidence_records = [
+                EvidenceRecord(
+                    transaction_id=str(t.id),
+                    date=str(t.date),
+                    description=t.description or t.raw_narration,
+                    amount=float(abs(t.amount)),
+                    category=t.category,
+                    source_document=t.source_id or "Bank Statement",
+                    source_page=t.source_page_number or 1,
+                )
+                for t in income_txs[:5]
+            ]
+
+            return EvidencePackage(
+                question=query,
+                period=f"{tenure_years:.0f} Years",
+                metrics=FinancialMetrics(
+                    total_inflow=monthly_net_income,
+                    total_outflow=monthly_emi,
+                    net_flow=round(monthly_net_income - monthly_emi, 2),
+                    transaction_count=len(income_txs),
+                    currency="INR",
+                ),
+                aggregates=FinancialAggregates(),
+                anomalies=[],
+                transaction_samples=evidence_records,
+                calculation=calc_node,
+                evidence=evidence_records,
+                top_merchants=[],
+                loan_analysis=loan_node,
+            )
+
         # Base query on Transaction table directly
         q = db_session.query(Transaction).filter(Transaction.user_id == user_id)
 
@@ -228,6 +493,10 @@ class FinancialQueryPlanner:
             return EvidencePackage(
                 question=query,
                 period=period,
+                metrics=FinancialMetrics(transaction_count=0),
+                aggregates=FinancialAggregates(),
+                anomalies=[],
+                transaction_samples=[],
                 calculation=calc_node,
                 evidence=[],
                 top_merchants=[]
@@ -280,6 +549,67 @@ class FinancialQueryPlanner:
             for m in merchant_groups if m[0]
         ]
 
+        # 4. Category breakdown
+        cat_groups = (
+            q.with_entities(
+                Transaction.category,
+                func.sum(func.abs(Transaction.amount)).label("cat_total"),
+                func.count(Transaction.id).label("cat_count")
+            )
+            .group_by(Transaction.category)
+            .order_by(desc("cat_total"))
+            .limit(5)
+            .all()
+        )
+        category_breakdown = [
+            {"category": c[0] or "Uncategorized", "total": float(c[1]), "count": c[2]}
+            for c in cat_groups if c[0]
+        ]
+
+        # 5. Financial metrics calculation
+        total_inflow = float(
+            db_session.query(func.sum(Transaction.amount))
+            .filter(Transaction.user_id == user_id, Transaction.amount > 0)
+            .scalar() or 0.0
+        )
+        total_outflow = float(
+            db_session.query(func.sum(func.abs(Transaction.amount)))
+            .filter(Transaction.user_id == user_id, Transaction.amount < 0, Transaction.is_excluded_from_spending == False)
+            .scalar() or 0.0
+        )
+        avg_val = float(q.with_entities(func.avg(func.abs(Transaction.amount))).scalar() or 0.0)
+        max_val = float(q.with_entities(func.max(func.abs(Transaction.amount))).scalar() or 0.0)
+        min_val = float(q.with_entities(func.min(func.abs(Transaction.amount))).scalar() or 0.0)
+
+        metrics = FinancialMetrics(
+            total_inflow=round(total_inflow, 2),
+            total_outflow=round(total_outflow, 2),
+            net_flow=round(total_inflow - total_outflow, 2),
+            transaction_count=total_tx_count,
+            average_amount=round(avg_val, 2),
+            max_amount=round(max_val, 2),
+            min_amount=round(min_val, 2),
+            currency="INR"
+        )
+
+        # 6. Evaluate spending anomalies
+        tx_dicts = [
+            {
+                "id": str(t.id),
+                "amount": float(t.amount),
+                "category": t.category,
+                "description": t.description or t.raw_narration,
+                "date": str(t.date),
+                "raw_text": t.raw_narration
+            }
+            for t in evidence_txs
+        ]
+        try:
+            detected_anomalies = detect_spending_anomalies(tx_dicts)
+        except Exception as anomaly_err:
+            logger.debug(f"Anomaly evaluation skipped: {anomaly_err}")
+            detected_anomalies = []
+
         calc_node = CalculationNode(
             operation=intent,
             field="amount",
@@ -292,6 +622,13 @@ class FinancialQueryPlanner:
         return EvidencePackage(
             question=query,
             period=period,
+            metrics=metrics,
+            aggregates=FinancialAggregates(
+                category_breakdown=category_breakdown,
+                top_merchants=top_merchants
+            ),
+            anomalies=detected_anomalies,
+            transaction_samples=evidence_records,
             calculation=calc_node,
             evidence=evidence_records,
             top_merchants=top_merchants
