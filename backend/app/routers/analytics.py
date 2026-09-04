@@ -12,7 +12,7 @@ from sqlalchemy import func, or_, and_, case
 
 from app.database import get_db
 from app.models import (
-    Account, AccountSubtype, AccountClassification, Transaction,
+    Account, AccountSubtype, AccountClassification, Transaction, TransactionType,
     CreditCard, CreditCardStatement, Loan, FinancialGoal,
     InsurancePolicy, MandateRecord, Payslip, CustomSubscription
 )
@@ -97,6 +97,221 @@ def get_spending_report(db: Session = Depends(get_db), current_user = Depends(ge
     return {
         "categories": list(categories_found),
         "data": formatted_data
+    }
+
+class AiReportRequest(BaseModel):
+    period_type: str = "month"  # "month" | "quarter" | "year"
+    period_value: str = "2026-08"
+
+def resolve_period_range(period_type: str, period_value: str):
+    import calendar
+    today = date_type.today()
+    try:
+        if period_type == "quarter":
+            parts = period_value.split("-Q")
+            year = int(parts[0])
+            q = int(parts[1])
+            q_months = {1: (1, 3), 2: (4, 6), 3: (7, 9), 4: (10, 12)}
+            start_m, end_m = q_months.get(q, (1, 3))
+            start_date = date_type(year, start_m, 1)
+            last_day = calendar.monthrange(year, end_m)[1]
+            end_date = date_type(year, end_m, last_day)
+            label = f"Q{q} {year}"
+        elif period_type == "year":
+            year = int(period_value)
+            start_date = date_type(year, 1, 1)
+            end_date = date_type(year, 12, 31)
+            label = f"Full Year {year}"
+        else:  # month
+            parts = period_value.split("-")
+            year = int(parts[0])
+            month = int(parts[1])
+            last_day = calendar.monthrange(year, month)[1]
+            start_date = date_type(year, month, 1)
+            end_date = date_type(year, month, last_day)
+            label = datetime(year, month, 1).strftime("%B %Y")
+    except Exception:
+        start_date = date_type(today.year, today.month, 1)
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        end_date = date_type(today.year, today.month, last_day)
+        label = today.strftime("%B %Y")
+    return start_date, end_date, label
+
+def synthesize_ai_report(period_label, total_income, total_expense, net_savings, savings_rate, sorted_categories, top_expenses, grade):
+    from app.ai import query_ollama_json
+
+    top_cat_summary = ", ".join([f"{c['category']} (₹{c['amount']:,.0f} - {c['percentage']}%)" for c in sorted_categories[:3]]) if sorted_categories else "No categorized expenses"
+    top_exp_summary = ", ".join([f"{e['merchant']}: ₹{e['amount']:,.0f}" for e in top_expenses[:3]]) if top_expenses else "No single large outflows"
+
+    prompt = f"""You are WiseRaman, an expert personal wealth intelligence advisor. Analyze this user's financial performance for {period_label}.
+Financial Metrics:
+- Total Income: ₹{total_income:,.2f}
+- Total Outflow: ₹{total_expense:,.2f}
+- Net Surplus/Savings: ₹{net_savings:,.2f}
+- Savings Rate: {savings_rate:.1f}%
+- Discipline Grade: {grade}
+- Top Spending Categories: {top_cat_summary}
+- Notable Outflows: {top_exp_summary}
+
+Respond in strictly valid JSON with these exact 3 keys:
+{{
+  "ai_summary": "A concise 2-sentence executive summary evaluating cash flow posture and capital retention.",
+  "insights": ["Key observation 1 on primary spending drivers", "Key observation 2 on cash flow velocity", "Key observation 3 on savings discipline"],
+  "recommendations": ["Actionable financial recommendation 1", "Actionable financial recommendation 2", "Actionable financial recommendation 3"]
+}}"""
+
+    try:
+        res = query_ollama_json(prompt, timeout=10)
+        if isinstance(res, dict) and "ai_summary" in res and "insights" in res and "recommendations" in res:
+            return res["ai_summary"], res["insights"], res["recommendations"]
+    except Exception as e:
+        logger.info(f"Ollama structured generation fallback to deterministic synthesis: {e}")
+
+    # High quality domain-grounded synthesis fallback
+    primary_cat = sorted_categories[0]['category'] if sorted_categories else "Living Expenses"
+    primary_pct = sorted_categories[0]['percentage'] if sorted_categories else 0.0
+
+    if savings_rate >= 35:
+        summary = (
+            f"For {period_label}, you maintained an outstanding net surplus of ₹{net_savings:,.2f} with a {savings_rate:.1f}% savings rate. "
+            f"Your cash flow posture is in aggressive expansion, significantly outperforming industry benchmark savings rates."
+        )
+    elif savings_rate >= 15:
+        summary = (
+            f"For {period_label}, you achieved a healthy net positive buffer of ₹{net_savings:,.2f} ({savings_rate:.1f}% savings rate). "
+            f"Discretionary outflows in {primary_cat} accounted for {primary_pct:.1f}% of total expenditures."
+        )
+    elif savings_rate >= 0:
+        summary = (
+            f"During {period_label}, cash flows remained closely balanced with a net surplus of ₹{net_savings:,.2f} ({savings_rate:.1f}% savings rate). "
+            f"Operational reserves are stable, but tighter discretionary budget caps will accelerate wealth generation."
+        )
+    else:
+        summary = (
+            f"During {period_label}, total outflows (₹{total_expense:,.2f}) exceeded income (₹{total_income:,.2f}) by ₹{abs(net_savings):,.2f}. "
+            f"Corrective budget reallocation is recommended to protect long-term liquid reserves."
+        )
+
+    insights = [
+        f"Primary Expense Driver: {primary_cat} comprised {primary_pct:.1f}% of all spending (₹{sorted_categories[0]['amount']:,.2f})." if sorted_categories else "Outflows were distributed evenly across essential categories.",
+        f"Notable Single Outflow: {top_expenses[0]['merchant']} charged ₹{top_expenses[0]['amount']:,.2f} on {top_expenses[0]['date']}." if top_expenses else "No single transaction exceeded standard operating thresholds.",
+        f"Capital Retention Rate: Your {savings_rate:.1f}% retention indicates a {'strong capital retention discipline' if savings_rate >= 20 else 'vulnerability to unexpected liquidity shocks'}."
+    ]
+
+    recommendations = [
+        f"Implement a 15% target reduction on discretionary {primary_cat} expenses to redirect ~₹{(sorted_categories[0]['amount'] * 0.15):,.0f} into liquid investments." if sorted_categories else "Maintain active review on non-recurring transactions.",
+        f"Allocate at least ₹{max(5000, int(abs(net_savings) * 0.35)):,.0f} toward automated index fund SIPs or emergency buffer replenishment.",
+        "Audit recurring digital subscriptions and auto-debits before monthly billing cutoffs to prevent passive fee leakage."
+    ]
+
+    return summary, insights, recommendations
+
+@router.post("/reports/ai-generate")
+def generate_ai_report(request: AiReportRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """Generates an AI-driven financial executive intelligence report for month, quarter, or year."""
+    start_date, end_date, period_label = resolve_period_range(request.period_type, request.period_value)
+
+    txs = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.date >= start_date,
+        Transaction.date <= end_date,
+        Transaction.is_excluded_from_spending == False
+    ).order_by(Transaction.date.desc()).all()
+
+    total_income = Decimal("0.00")
+    total_expense = Decimal("0.00")
+    categories_spend = defaultdict(Decimal)
+    large_expenses = []
+
+    for t in txs:
+        amt = Decimal(str(t.amount or 0))
+        is_transfer = (
+            t.category == "Transfer"
+            or t.transaction_type in [TransactionType.TRANSFER_INTERNAL, TransactionType.CC_BILL_PAYMENT, TransactionType.CC_PAYMENT_RECEIVED]
+        )
+        is_inflow = (t.transaction_type == TransactionType.INCOME or amt > 0)
+        
+        if is_inflow and not is_transfer:
+            total_income += abs(amt)
+        elif not is_inflow and not is_transfer:
+            val = abs(amt)
+            total_expense += val
+            cat = t.category or "Other"
+            categories_spend[cat] += val
+            if val >= Decimal("500.00"):
+                large_expenses.append({
+                    "date": str(t.date),
+                    "description": t.description or t.raw_narration or "Expense",
+                    "merchant": t.description or "Expense",
+                    "category": cat,
+                    "amount": float(val)
+                })
+
+    net_savings = total_income - total_expense
+    savings_rate = float((net_savings / total_income * Decimal("100.00")).quantize(Decimal("0.1"))) if total_income > 0 else 0.0
+
+    sorted_categories = []
+    for cat_name, cat_val in sorted(categories_spend.items(), key=lambda x: x[1], reverse=True):
+        pct = float((cat_val / total_expense * Decimal("100.00")).quantize(Decimal("0.1"))) if total_expense > 0 else 0.0
+        sorted_categories.append({
+            "category": cat_name,
+            "amount": float(cat_val),
+            "percentage": pct
+        })
+
+    large_expenses.sort(key=lambda x: x["amount"], reverse=True)
+    top_expenses = large_expenses[:5]
+
+    if savings_rate >= 40:
+        grade = "A+"
+        grade_desc = "Exceptional Wealth Accumulation Discipline"
+    elif savings_rate >= 25:
+        grade = "A"
+        grade_desc = "Solid Savings Rate (Exceeds Industry Standards)"
+    elif savings_rate >= 15:
+        grade = "B+"
+        grade_desc = "Healthy Foundation with Expense Optimization Scope"
+    elif savings_rate >= 0:
+        grade = "B"
+        grade_desc = "Break-even / Thin Buffer"
+    else:
+        grade = "C"
+        grade_desc = "Deficit Spending Alert"
+
+    ai_summary, insights, recommendations = synthesize_ai_report(
+        period_label=period_label,
+        total_income=float(total_income),
+        total_expense=float(total_expense),
+        net_savings=float(net_savings),
+        savings_rate=savings_rate,
+        sorted_categories=sorted_categories,
+        top_expenses=top_expenses,
+        grade=grade
+    )
+
+    return {
+        "period_type": request.period_type,
+        "period_value": request.period_value,
+        "period_label": period_label,
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "transaction_count": len(txs),
+        "metrics": {
+            "total_income": float(total_income),
+            "total_expense": float(total_expense),
+            "net_savings": float(net_savings),
+            "savings_rate": savings_rate
+        },
+        "grade": {
+            "score": grade,
+            "label": grade_desc
+        },
+        "categories": sorted_categories,
+        "top_expenses": top_expenses,
+        "ai_summary": ai_summary,
+        "insights": insights,
+        "recommendations": recommendations,
+        "generated_at": datetime.now().isoformat()
     }
 
 @router.get("/analytics/savings/cashflow")

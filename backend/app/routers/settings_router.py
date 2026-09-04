@@ -18,9 +18,11 @@ router = APIRouter(prefix="/api/settings", tags=["Settings"])
 class LlmSettingsRequest(BaseModel):
     ollama_url: Optional[str] = None
     llm_model: Optional[str] = None
+    fallback_model: Optional[str] = None
     embedding_model: Optional[str] = None
     temperature: Optional[float] = None
     num_ctx: Optional[int] = None
+    enable_thinking: Optional[bool] = None
 
 class TestOllamaRequest(BaseModel):
     url: Optional[str] = None
@@ -46,11 +48,14 @@ def get_llm_settings():
     return {
         "ollama_url": active_url,
         "llm_model": settings.LLM_MODEL,
+        "fallback_model": settings.LLM_FALLBACK_MODEL,
         "embedding_model": settings.EMBEDDING_MODEL,
         "temperature": settings.LLM_TEMPERATURE,
         "num_ctx": settings.LLM_NUM_CTX,
+        "enable_thinking": settings.LLM_ENABLE_THINKING,
         "ollama_connected": ollama_connected,
-        "available_models": available_models
+        "available_models": available_models,
+        "presets": ["qwen3:4b", "qwen2.5:3b", "wiseraman-copilot"],
     }
 
 @router.post("/llm")
@@ -65,14 +70,21 @@ def update_llm_settings(req: LlmSettingsRequest, current_user = Depends(get_curr
         settings.OLLAMA_URL = url
     if req.llm_model:
         settings.LLM_MODEL = req.llm_model.strip()
+    if req.fallback_model is not None:
+        settings.LLM_FALLBACK_MODEL = req.fallback_model.strip()
     if req.embedding_model:
         settings.EMBEDDING_MODEL = req.embedding_model.strip()
     if req.temperature is not None:
         settings.LLM_TEMPERATURE = float(req.temperature)
     if req.num_ctx is not None:
         settings.LLM_NUM_CTX = int(req.num_ctx)
+    if req.enable_thinking is not None:
+        settings.LLM_ENABLE_THINKING = bool(req.enable_thinking)
 
-    backend_telemetry.log(f"Updated LLM configuration: Model={settings.LLM_MODEL}, URL={settings.OLLAMA_URL}, Temp={settings.LLM_TEMPERATURE}")
+    backend_telemetry.log(
+        f"Updated LLM configuration: Model={settings.LLM_MODEL} (Fallback={settings.LLM_FALLBACK_MODEL}), "
+        f"Thinking={settings.LLM_ENABLE_THINKING}, Ctx={settings.LLM_NUM_CTX}, Temp={settings.LLM_TEMPERATURE}"
+    )
     return get_llm_settings()
 
 @router.post("/test-ollama")
