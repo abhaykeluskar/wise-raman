@@ -2473,8 +2473,47 @@ def get_review_queue(db: Session = Depends(get_db), current_user = Depends(get_c
     from app.services.reconciliation_engine import generate_review_queue_summary
     from app.services.anomaly_detector import detect_spending_anomalies
 
-    txns = db.query(Transaction).filter(Transaction.user_id == current_user.id).order_by(Transaction.date.desc()).all()
-    txn_dicts = [
+    # 1. Fetch unverified or low-confidence transactions directly with index
+    unverified_txns = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.verified == False
+    ).order_by(Transaction.date.desc()).limit(150).all()
+
+    items = []
+
+    for t in unverified_txns:
+        conf = float(t.extraction_confidence or 1.0)
+        amt = float(t.amount or 0)
+        desc = t.description or t.raw_text or "Unknown Transaction"
+        if conf < 0.85:
+            items.append({
+                "id": str(t.id),
+                "type": "LOW_CONFIDENCE_EXTRACTION",
+                "title": f"Low Confidence: {desc}",
+                "amount": amt,
+                "date": str(t.date),
+                "category": t.category,
+                "confidence": conf,
+                "reason": f"Extraction confidence is {conf*100:.0f}%"
+            })
+        elif not t.category or t.category in ["Other", "Uncategorized"]:
+            items.append({
+                "id": str(t.id),
+                "type": "CATEGORY_UNCERTAINTY",
+                "title": f"Uncategorized: {desc}",
+                "amount": amt,
+                "date": str(t.date),
+                "category": "Uncategorized",
+                "confidence": 0.70,
+                "reason": "Merchant category requires confirmation"
+            })
+
+    # 2. Spending Anomalies on recent transactions (capped at 500)
+    recent_txns = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id
+    ).order_by(Transaction.date.desc()).limit(500).all()
+
+    recent_dicts = [
         {
             "id": str(t.id),
             "amount": float(t.amount),
@@ -2485,41 +2524,10 @@ def get_review_queue(db: Session = Depends(get_db), current_user = Depends(get_c
             "confidence": float(t.extraction_confidence or 1.0),
             "verified": t.verified
         }
-        for t in txns
+        for t in recent_txns
     ]
 
-    items = []
-
-    # 1. Unverified or Low Confidence Transactions
-    for t in txn_dicts:
-        if not t.get("verified"):
-            conf = t.get("confidence", 1.0)
-            amt = abs(t.get("amount", 0))
-            if conf < 0.85:
-                items.append({
-                    "id": t["id"],
-                    "type": "LOW_CONFIDENCE_EXTRACTION",
-                    "title": f"Low Confidence: {t.get('description') or t.get('raw_text')}",
-                    "amount": t["amount"],
-                    "date": t["date"],
-                    "category": t.get("category"),
-                    "confidence": conf,
-                    "reason": f"Extraction confidence is {conf*100:.0f}%"
-                })
-            elif not t.get("category") or t.get("category") in ["Other", "Uncategorized"]:
-                items.append({
-                    "id": t["id"],
-                    "type": "CATEGORY_UNCERTAINTY",
-                    "title": f"Uncategorized: {t.get('description') or t.get('raw_text')}",
-                    "amount": t["amount"],
-                    "date": t["date"],
-                    "category": "Uncategorized",
-                    "confidence": 0.70,
-                    "reason": "Merchant category requires confirmation"
-                })
-
-    # 2. Spending Anomalies
-    anomalies = detect_spending_anomalies(txn_dicts)
+    anomalies = detect_spending_anomalies(recent_dicts)
     for a in anomalies[:5]: # Include top 5 anomalies
         items.append({
             "id": a["transaction_id"],

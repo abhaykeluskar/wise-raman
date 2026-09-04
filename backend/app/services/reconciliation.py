@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+from collections import defaultdict
 import logging
-from sqlalchemy.orm import Session
+import uuid
+from sqlalchemy.orm import Session, joinedload
 from app.models import (
     Transaction, TransferLink, TransactionType, FinancialEvent,
     FinancialEventType, ReviewState, AccountSubtype
@@ -19,7 +21,6 @@ def reconcile_transfers(db: Session, user_id: str):
     """
     logger.info(f"Starting reconciliation for user {user_id}")
 
-    import uuid
     if isinstance(user_id, str):
         try:
             user_uuid = uuid.UUID(user_id)
@@ -28,14 +29,19 @@ def reconcile_transfers(db: Session, user_id: str):
     else:
         user_uuid = user_id
 
-    # Get unlinked transactions
+    # 1. Get already linked transactions scoped strictly to this user
     linked_tx_ids = set()
-    for link in db.query(TransferLink).all():
-        linked_tx_ids.add(link.from_transaction_id)
-        linked_tx_ids.add(link.to_transaction_id)
+    user_links = db.query(TransferLink.from_transaction_id, TransferLink.to_transaction_id).filter(
+        TransferLink.user_id == user_uuid
+    ).all()
+    for f_id, t_id in user_links:
+        if f_id:
+            linked_tx_ids.add(f_id)
+        if t_id:
+            linked_tx_ids.add(t_id)
 
-    # 1. Internal Transfers & Card Payments (Cross-Account)
-    w_query = db.query(Transaction).filter(
+    # 2. Fetch unlinked withdrawals and deposits with eager-loaded accounts (prevents N+1)
+    w_query = db.query(Transaction).options(joinedload(Transaction.account)).filter(
         Transaction.user_id == user_uuid,
         Transaction.amount < 0
     )
@@ -43,7 +49,7 @@ def reconcile_transfers(db: Session, user_id: str):
         w_query = w_query.filter(~Transaction.id.in_(linked_tx_ids))
     withdrawals = w_query.order_by(Transaction.date.asc()).all()
 
-    d_query = db.query(Transaction).filter(
+    d_query = db.query(Transaction).options(joinedload(Transaction.account)).filter(
         Transaction.user_id == user_uuid,
         Transaction.amount > 0
     )
@@ -51,16 +57,25 @@ def reconcile_transfers(db: Session, user_id: str):
         d_query = d_query.filter(~Transaction.id.in_(linked_tx_ids))
     deposits = d_query.order_by(Transaction.date.asc()).all()
     
+    # 3. Hash bucket deposits by exact amount for O(1) candidate lookup
+    deposits_by_amount = defaultdict(list)
+    for d in deposits:
+        deposits_by_amount[abs(d.amount)].append(d)
+
     links_created = 0
 
+    # 4. Internal Transfers & Card Payments (Cross-Account)
     for w in withdrawals:
-        if w.id in linked_tx_ids: continue
+        if w.id in linked_tx_ids:
+            continue
         w_amt = abs(w.amount)
-        for d in deposits:
-            if d.id in linked_tx_ids: continue
+        candidates = deposits_by_amount.get(w_amt, [])
+        for d in candidates:
+            if d.id in linked_tx_ids:
+                continue
             
             # Must be different accounts for an internal transfer / card payment
-            if w.account_id != d.account_id and abs(d.amount) == w_amt:
+            if w.account_id != d.account_id:
                 is_cc = (
                     (w.account and w.account.subtype == AccountSubtype.CREDIT_CARD) or
                     (d.account and d.account.subtype == AccountSubtype.CREDIT_CARD)
@@ -120,15 +135,18 @@ def reconcile_transfers(db: Session, user_id: str):
                     links_created += 1
                     break
     
-    # 2. Refund Detection (Same-Account Reversals)
+    # 5. Refund Detection (Same-Account Reversals)
     for w in withdrawals:
-        if w.id in linked_tx_ids: continue
+        if w.id in linked_tx_ids:
+            continue
         w_amt = abs(w.amount)
-        for d in deposits:
-            if d.id in linked_tx_ids: continue
+        candidates = deposits_by_amount.get(w_amt, [])
+        for d in candidates:
+            if d.id in linked_tx_ids:
+                continue
             
             # Must be same account for a refund
-            if w.account_id == d.account_id and abs(d.amount) == w_amt:
+            if w.account_id == d.account_id:
                 date_diff = (d.date - w.date).days
                 if 0 <= date_diff <= 15:
                     w.transaction_type = TransactionType.REFUND_REVERSAL

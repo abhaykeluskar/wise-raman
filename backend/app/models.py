@@ -1,7 +1,7 @@
 import uuid
 import enum
 from decimal import Decimal
-from sqlalchemy import Column, String, Date, Boolean, ForeignKey, Numeric, Text, Enum as SQLEnum, DateTime, Integer
+from sqlalchemy import Column, String, Date, Boolean, ForeignKey, Numeric, Text, Enum as SQLEnum, DateTime, Integer, Index
 from sqlalchemy.orm import relationship, synonym
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
@@ -151,19 +151,25 @@ class ReviewState(str, enum.Enum):
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    __table_args__ = (
+        Index("ix_transactions_user_date", "user_id", "date"),
+        Index("ix_transactions_user_account", "user_id", "account_id"),
+        Index("ix_transactions_user_category", "user_id", "category"),
+        Index("ix_transactions_recon_lookup", "user_id", "amount", "date", "account_id"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
-    statement_id = Column(UUID(as_uuid=True), ForeignKey("credit_card_statements.id", ondelete="SET NULL"), nullable=True)
-    date = Column(Date, nullable=False)  # transaction_date
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    statement_id = Column(UUID(as_uuid=True), ForeignKey("credit_card_statements.id", ondelete="SET NULL"), nullable=True, index=True)
+    date = Column(Date, nullable=False, index=True)  # transaction_date
     value_date = Column(Date, nullable=True)
     raw_narration = Column("raw_narration", Text, nullable=False)  # Immutable original text
     raw_text = synonym("raw_narration")
     normalized_narration = Column(String(150), nullable=True)
     description = Column(String(150), nullable=True)  # cleaned_merchant
     merchant_id = Column(UUID(as_uuid=True), ForeignKey("merchants.id", ondelete="SET NULL"), nullable=True)
-    category = Column(String(100), nullable=True, default="UNKNOWN")
+    category = Column(String(100), nullable=True, default="UNKNOWN", index=True)
     subcategory = Column(String(100), nullable=True)
     transaction_type = Column(SQLEnum(TransactionType, name="transaction_type_enum"), nullable=False, default=TransactionType.UNKNOWN_NEEDS_REVIEW)
     payment_rail = Column(SQLEnum(PaymentRail, name="payment_rail_enum"), nullable=False, default=PaymentRail.UNKNOWN_NEEDS_REVIEW)
@@ -195,7 +201,7 @@ class Transaction(Base):
     embedding = Column(Vector(768), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    financial_event_id = Column(UUID(as_uuid=True), ForeignKey("financial_events.id", ondelete="SET NULL"), nullable=True)
+    financial_event_id = Column(UUID(as_uuid=True), ForeignKey("financial_events.id", ondelete="SET NULL"), nullable=True, index=True)
 
     account = relationship("Account", back_populates="transactions")
     statement = relationship("CreditCardStatement", back_populates="transactions")
@@ -330,11 +336,14 @@ class Merchant(Base):
 
 class TransferLink(Base):
     __tablename__ = "transfer_links"
+    __table_args__ = (
+        Index("ix_transfer_links_pair", "from_transaction_id", "to_transaction_id"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    from_transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
-    to_transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    from_transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False, index=True)
+    to_transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False, index=True)
     amount = Column(Numeric(14, 2), nullable=False)
     transfer_date = Column(Date, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -764,12 +773,15 @@ class BankFeeRecord(Base):
 
 class FinancialEvent(Base):
     __tablename__ = "financial_events"
+    __table_args__ = (
+        Index("ix_financial_events_user_occurred", "user_id", "occurred_at"),
+    )
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     event_type = Column(SQLEnum(FinancialEventType, name="financial_event_type_enum"), nullable=False, default=FinancialEventType.UNKNOWN_NEEDS_REVIEW)
     review_state = Column(SQLEnum(ReviewState, name="review_state_enum"), nullable=False, default=ReviewState.UNKNOWN)
-    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    occurred_at = Column(DateTime(timezone=True), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     parent_event_id = Column(UUID(as_uuid=True), ForeignKey("financial_events.id", ondelete="SET NULL"), nullable=True)
     economic_amount = Column(Numeric(14, 2), nullable=True) # Explicit semantic amount
