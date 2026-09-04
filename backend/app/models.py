@@ -200,6 +200,39 @@ class Transaction(Base):
     account = relationship("Account", back_populates="transactions")
     statement = relationship("CreditCardStatement", back_populates="transactions")
     financial_event = relationship("FinancialEvent", back_populates="transactions")
+    transfer_as_from = relationship("TransferLink", foreign_keys="TransferLink.from_transaction_id", back_populates="from_transaction", uselist=False)
+    transfer_as_to = relationship("TransferLink", foreign_keys="TransferLink.to_transaction_id", back_populates="to_transaction", uselist=False)
+
+    @property
+    def transfer_link(self):
+        return self.transfer_as_from or self.transfer_as_to
+
+    @property
+    def transfer_link_id(self):
+        link = self.transfer_link
+        return link.id if link else None
+
+    @property
+    def counterpart_transaction(self):
+        if self.transfer_as_from and self.transfer_as_from.to_transaction:
+            return self.transfer_as_from.to_transaction
+        if self.transfer_as_to and self.transfer_as_to.from_transaction:
+            return self.transfer_as_to.from_transaction
+        return None
+
+    @property
+    def counterpart_id(self):
+        cp = self.counterpart_transaction
+        return cp.id if cp else None
+
+    @property
+    def counterpart_account_name(self):
+        cp = self.counterpart_transaction
+        return cp.account.name if (cp and cp.account) else None
+
+    @property
+    def account_name(self):
+        return self.account.name if self.account else None
 
 class Category(Base):
     __tablename__ = "categories"
@@ -306,8 +339,8 @@ class TransferLink(Base):
     transfer_date = Column(Date, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    from_transaction = relationship("Transaction", foreign_keys=[from_transaction_id])
-    to_transaction = relationship("Transaction", foreign_keys=[to_transaction_id])
+    from_transaction = relationship("Transaction", foreign_keys=[from_transaction_id], back_populates="transfer_as_from")
+    to_transaction = relationship("Transaction", foreign_keys=[to_transaction_id], back_populates="transfer_as_to")
 
 # --- PHASE 3: Indian Tax & Wealth ---
 

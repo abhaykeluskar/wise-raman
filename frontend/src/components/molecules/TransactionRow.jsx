@@ -15,7 +15,7 @@ export const TransactionRow = ({
 
   const amount = parseFloat(transaction.amount || 0);
   const isIncome = transaction.flow === 'INFLOW' || transaction.type === 'CREDIT' || amount > 0;
-  const isTransfer = transaction.category === 'Transfer' || transaction.type === 'TRANSFER';
+  const isTransfer = transaction.category === 'Transfer' || transaction.type === 'TRANSFER' || Boolean(transaction.transfer_link_id);
   const displayAmount = Math.abs(amount);
 
   return (
@@ -47,7 +47,7 @@ export const TransactionRow = ({
 
         {/* Primary Info */}
         <div className="flex flex-col min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-xs font-semibold truncate ${
               isDark ? 'text-[#F1F5F2] group-hover:text-[#7FC39A]' : 'text-[#1D2822] group-hover:text-[#3F8F5E]'
             }`}>
@@ -55,6 +55,12 @@ export const TransactionRow = ({
             </span>
             {transaction.verified && (
               <CheckCircle2 className="h-3 w-3 text-[#3F8F5E] shrink-0" title="Verified transaction" />
+            )}
+            {transaction.transfer_link_id && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#3F8F5E]/15 text-[#3F8F5E]" title="Linked Transfer / Card Payment Pair">
+                <ArrowLeftRight className="h-2.5 w-2.5" />
+                <span>Linked</span>
+              </span>
             )}
           </div>
 

@@ -261,6 +261,13 @@ class TransactionResponse(BaseModel):
     transaction_type: Optional[str] = None
     is_excluded_from_spending: bool = False
     verified: bool
+    raw_narration: Optional[str] = None
+    reference_id: Optional[str] = None
+    payment_rail: Optional[str] = None
+    account_name: Optional[str] = None
+    transfer_link_id: Optional[uuid.UUID] = None
+    counterpart_id: Optional[uuid.UUID] = None
+    counterpart_account_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -3284,6 +3291,130 @@ def api_delete_transfer(
     """Atomically reverts both accounts and deletes transfer legs."""
     from app.services.transfers import delete_atomic_transfer
     return delete_atomic_transfer(db, current_user.id, link_id)
+
+
+class LinkExistingTransactionsRequest(BaseModel):
+    from_transaction_id: uuid.UUID
+    to_transaction_id: uuid.UUID
+    amount: Optional[Decimal] = None
+
+class EditTransferLinkRequest(BaseModel):
+    current_transaction_id: Optional[uuid.UUID] = None
+    new_counterpart_transaction_id: Optional[uuid.UUID] = None
+    amount: Optional[Decimal] = None
+    transfer_date: Optional[date_type] = None
+
+@app.post("/api/transfers/link-existing")
+def api_link_existing_transactions(
+    req: LinkExistingTransactionsRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Manually links two existing transactions (e.g. Bank CC payment outflow <-> CC payment received inflow)."""
+    from app.services.transfers import link_existing_transactions
+    link = link_existing_transactions(
+        db=db,
+        user_id=current_user.id,
+        from_transaction_id=req.from_transaction_id,
+        to_transaction_id=req.to_transaction_id,
+        custom_amount=req.amount
+    )
+    return {
+        "status": "LINKED",
+        "message": "Transactions successfully linked.",
+        "transfer_link_id": str(link.id),
+        "amount": float(link.amount),
+        "date": str(link.transfer_date)
+    }
+
+@app.put("/api/transfers/links/{link_id}")
+def api_edit_transfer_link(
+    link_id: uuid.UUID,
+    req: EditTransferLinkRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Allows editing an existing transfer link: changing counterpart, amount, or date."""
+    from app.services.transfers import edit_transfer_link
+    return edit_transfer_link(
+        db=db,
+        user_id=current_user.id,
+        transfer_link_id=link_id,
+        current_transaction_id=req.current_transaction_id,
+        new_counterpart_transaction_id=req.new_counterpart_transaction_id,
+        new_amount=req.amount,
+        new_transfer_date=req.transfer_date
+    )
+
+@app.delete("/api/transfers/links/{link_id}")
+@app.post("/api/transfers/links/{link_id}/unlink")
+def api_unlink_transactions(
+    link_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Safely unlinks transactions without deleting them or altering balances."""
+    from app.services.transfers import unlink_transactions
+    return unlink_transactions(db, current_user.id, link_id)
+
+@app.get("/api/transfers/candidates")
+def api_get_payment_match_candidates(
+    transaction_id: uuid.UUID,
+    max_candidates: int = 10,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Returns ranked candidate counterpart transactions for linking."""
+    from app.services.transfers import find_payment_match_candidates
+    return find_payment_match_candidates(db, current_user.id, transaction_id, max_candidates)
+
+@app.get("/api/transfers/searchable-transactions")
+def api_search_candidate_transactions(
+    exclude_id: uuid.UUID,
+    account_id: Optional[uuid.UUID] = None,
+    query: Optional[str] = None,
+    limit: int = 25,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Searches unlinked transactions across accounts for manual counterpart selection."""
+    from app.services.transfers import search_candidate_transactions
+    return search_candidate_transactions(db, current_user.id, exclude_id, account_id, query, limit)
+
+@app.get("/api/transfers/link-details/{transaction_id}")
+def api_get_transaction_link_details(
+    transaction_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Returns detailed transfer link and counterpart transaction information for a transaction."""
+    from app.models import Transaction, TransferLink
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id, Transaction.user_id == current_user.id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    link = tx.transfer_link
+    if not link:
+        return {"is_linked": False}
+    
+    cp = tx.counterpart_transaction
+    return {
+        "is_linked": True,
+        "transfer_link_id": str(link.id),
+        "amount": float(link.amount),
+        "transfer_date": str(link.transfer_date),
+        "counterpart": {
+            "id": str(cp.id) if cp else None,
+            "account_id": str(cp.account_id) if cp else None,
+            "account_name": cp.account.name if (cp and cp.account) else "Unknown",
+            "date": str(cp.date) if cp else None,
+            "amount": float(cp.amount) if cp else 0.0,
+            "description": cp.description if cp else None,
+            "raw_narration": cp.raw_narration if cp else None,
+            "reference_id": cp.reference_id or cp.utr_number if cp else None,
+            "payment_rail": cp.payment_rail.value if (cp and hasattr(cp.payment_rail, 'value')) else str(cp.payment_rail) if cp else None
+        } if cp else None
+    }
 
 
 # 2. AUTO-ROLLOVER ENVELOPE BUDGETS
