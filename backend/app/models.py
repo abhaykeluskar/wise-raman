@@ -85,6 +85,18 @@ class Account(Base):
     bank = relationship("Bank", back_populates="accounts")
     transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
     statements = relationship("CreditCardStatement", back_populates="account", cascade="all, delete-orphan")
+    linked_goals = relationship("FinancialGoal", back_populates="linked_account")
+
+    @property
+    def goal_locked_amount(self) -> Decimal:
+        if not hasattr(self, "linked_goals") or not self.linked_goals:
+            return Decimal("0.00")
+        return sum(Decimal(str(g.current_amount or 0)) for g in self.linked_goals if not g.is_completed)
+
+    @property
+    def spendable_balance(self) -> Decimal:
+        bal = Decimal(str(self.balance or 0))
+        return bal - self.goal_locked_amount
 
 class CreditCardStatement(Base):
     __tablename__ = "credit_card_statements"
@@ -287,11 +299,15 @@ class TransferLink(Base):
     __tablename__ = "transfer_links"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     from_transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
     to_transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
     amount = Column(Numeric(14, 2), nullable=False)
     transfer_date = Column(Date, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    from_transaction = relationship("Transaction", foreign_keys=[from_transaction_id])
+    to_transaction = relationship("Transaction", foreign_keys=[to_transaction_id])
 
 # --- PHASE 3: Indian Tax & Wealth ---
 
@@ -462,7 +478,32 @@ class FinancialGoal(Base):
     target_date = Column(Date, nullable=True)
     priority = Column(String(20), default="MEDIUM") # 'HIGH', 'MEDIUM', 'LOW'
     is_completed = Column(Boolean, default=False)
+    linked_account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    linked_account = relationship("Account", back_populates="linked_goals")
+
+class GoalAllocationDirection(str, enum.Enum):
+    ALLOCATE = "ALLOCATE"
+    RELEASE = "RELEASE"
+
+class GoalAllocationLedger(Base):
+    """
+    Virtual sub-envelope allocation ledger tracking money assigned to or released from goals.
+    """
+    __tablename__ = "goal_allocation_ledgers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    goal_id = Column(UUID(as_uuid=True), ForeignKey("financial_goals.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount = Column(Numeric(14, 2), nullable=False)
+    direction = Column(SQLEnum(GoalAllocationDirection, name="goal_allocation_direction_enum"), nullable=False)
+    notes = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    goal = relationship("FinancialGoal")
+    account = relationship("Account")
 
 class InsurancePolicy(Base):
     """
@@ -756,5 +797,96 @@ class CustomSubscription(Base):
     is_active = Column(Boolean, default=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+# --- PHASE 8: Firefly III-Inspired Financial Architecture Enhancements ---
+
+class BudgetMode(str, enum.Enum):
+    STRICT_RESET = "STRICT_RESET"
+    ROLLOVER_SURPLUS_ONLY = "ROLLOVER_SURPLUS_ONLY"
+    ROLLOVER_NET = "ROLLOVER_NET"
+    SAVINGS_SWEEP = "SAVINGS_SWEEP"
+
+class EnvelopeBudget(Base):
+    """
+    Category-based envelope budget supporting Firefly III style AutoBudget & Rollover modes.
+    """
+    __tablename__ = "envelope_budgets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    category = Column(String(100), nullable=False)
+    monthly_limit = Column(Numeric(14, 2), nullable=False)
+    budget_mode = Column(SQLEnum(BudgetMode, name="budget_mode_enum"), nullable=False, default=BudgetMode.ROLLOVER_SURPLUS_ONLY)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    user = relationship("User")
+    period_records = relationship("BudgetPeriodRecord", back_populates="budget", cascade="all, delete-orphan")
+
+class BudgetPeriodRecord(Base):
+    """
+    Historical monthly snapshot tracking allocated limits, rollovers, and spent amounts.
+    """
+    __tablename__ = "budget_period_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    budget_id = Column(UUID(as_uuid=True), ForeignKey("envelope_budgets.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+    base_limit = Column(Numeric(14, 2), nullable=False)
+    rollover_in = Column(Numeric(14, 2), nullable=False, default=0.00)
+    effective_limit = Column(Numeric(14, 2), nullable=False)
+    spent_amount = Column(Numeric(14, 2), nullable=False, default=0.00)
+    closing_balance = Column(Numeric(14, 2), nullable=False, default=0.00)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    budget = relationship("EnvelopeBudget", back_populates="period_records")
+
+class WebhookEventType(str, enum.Enum):
+    ANOMALY_DETECTED = "ANOMALY_DETECTED"
+    BUDGET_OVERRUN = "BUDGET_OVERRUN"
+    MANDATE_DUE = "MANDATE_DUE"
+    TRANSFER_COMPLETED = "TRANSFER_COMPLETED"
+    HEALTH_SCORE_UPDATED = "HEALTH_SCORE_UPDATED"
+    TEST_PING = "TEST_PING"
+
+class WebhookEndpoint(Base):
+    """
+    Registered external webhook endpoints with HMAC-SHA256 signing secret.
+    """
+    __tablename__ = "webhook_endpoints"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    url = Column(String(500), nullable=False)
+    secret = Column(String(100), nullable=False)
+    description = Column(String(200), nullable=True)
+    subscribed_events = Column(Text, nullable=False, default="[]") # JSON array of event names
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    user = relationship("User")
+    deliveries = relationship("WebhookDelivery", back_populates="endpoint", cascade="all, delete-orphan")
+
+class WebhookDelivery(Base):
+    """
+    Log of webhook delivery attempts, responses, and status codes.
+    """
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    webhook_id = Column(UUID(as_uuid=True), ForeignKey("webhook_endpoints.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type = Column(String(50), nullable=False)
+    payload = Column(Text, nullable=False)
+    status_code = Column(Integer, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    success = Column(Boolean, default=False)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    endpoint = relationship("WebhookEndpoint", back_populates="deliveries")
 
 

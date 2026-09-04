@@ -1,10 +1,16 @@
+import uuid
 from decimal import Decimal
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import date
+from fastapi import HTTPException
 
-from app.models import Account, AccountSubtype, AccountClassification, Transaction, TransactionType, Loan, FixedDeposit, FinancialGoal
+from app.models import (
+    Account, AccountSubtype, AccountClassification, Transaction,
+    TransactionType, Loan, FixedDeposit, FinancialGoal,
+    GoalAllocationLedger, GoalAllocationDirection
+)
 
 ESSENTIAL_CATEGORIES = [
     "Groceries", "Utilities", "Dining", "Healthcare", "Fuel", "Education",
@@ -109,5 +115,153 @@ def calculate_goal_projection(goal: FinancialGoal) -> Dict[str, Any]:
         "remaining_amount": float(remaining_amount),
         "estimated_months_left": months_to_complete,
         "priority": goal.priority,
-        "is_completed": goal.is_completed
+        "is_completed": goal.is_completed,
+        "linked_account_id": str(goal.linked_account_id) if goal.linked_account_id else None,
+        "linked_account_name": goal.linked_account.name if goal.linked_account else None
+    }
+
+def get_account_virtual_allocation_breakdown(db: Session, account_id: uuid.UUID) -> Dict[str, Any]:
+    """
+    Computes Firefly III-style Piggy Bank virtual allocations for a liquid account.
+    Spendable Balance = Total Account Balance - Sum of all active goal allocations.
+    """
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found.")
+
+    total_balance = Decimal(str(account.balance or 0))
+    goals = db.query(FinancialGoal).filter(
+        FinancialGoal.linked_account_id == account_id,
+        FinancialGoal.is_completed == False
+    ).all()
+
+    goal_locked = sum(Decimal(str(g.current_amount or 0)) for g in goals)
+    spendable_balance = total_balance - goal_locked
+
+    goal_list = []
+    for g in goals:
+        target = Decimal(str(g.target_amount or 0))
+        cur = Decimal(str(g.current_amount or 0))
+        goal_list.append({
+            "goal_id": str(g.id),
+            "name": g.name,
+            "category": g.category,
+            "allocated_amount": float(cur),
+            "target_amount": float(target),
+            "allocation_percentage_of_account": round(float((cur / total_balance) * 100), 1) if total_balance > 0 else 0.0
+        })
+
+    return {
+        "account_id": str(account.id),
+        "account_name": account.name,
+        "subtype": account.subtype.value if account.subtype else "SAVINGS",
+        "total_balance": float(total_balance),
+        "goal_locked_amount": float(goal_locked),
+        "spendable_balance": float(spendable_balance),
+        "virtual_envelopes": goal_list
+    }
+
+def allocate_funds_to_goal(
+    db: Session,
+    user_id: uuid.UUID,
+    goal_id: uuid.UUID,
+    account_id: uuid.UUID,
+    amount: Decimal,
+    notes: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Allocates virtual funds from a liquid account to a savings goal (Piggy Bank style).
+    Guarantees Spendable Balance >= 0.
+    """
+    amount = abs(Decimal(str(amount)))
+    if amount <= Decimal("0.00"):
+        raise HTTPException(status_code=400, detail="Allocation amount must be positive.")
+
+    goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id, FinancialGoal.user_id == user_id).first()
+    account = db.query(Account).filter(Account.id == account_id, Account.user_id == user_id).first()
+
+    if not goal or not account:
+        raise HTTPException(status_code=404, detail="Goal or Account not found.")
+
+    # Calculate current spendable balance
+    breakdown = get_account_virtual_allocation_breakdown(db, account_id)
+    spendable = Decimal(str(breakdown["spendable_balance"]))
+
+    if amount > spendable:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient spendable balance. Available: ₹{spendable:,.2f}, Requested: ₹{amount:,.2f}"
+        )
+
+    goal.linked_account_id = account_id
+    goal.current_amount = Decimal(str(goal.current_amount or 0)) + amount
+    if goal.current_amount >= Decimal(str(goal.target_amount or 0)):
+        goal.is_completed = True
+
+    ledger = GoalAllocationLedger(
+        user_id=user_id,
+        goal_id=goal_id,
+        account_id=account_id,
+        amount=amount,
+        direction=GoalAllocationDirection.ALLOCATE,
+        notes=notes or f"Virtual allocation of ₹{amount:,.2f} to {goal.name}"
+    )
+    db.add(ledger)
+    db.commit()
+
+    return {
+        "message": f"Successfully allocated ₹{amount:,.2f} to {goal.name}",
+        "goal_id": str(goal.id),
+        "goal_current_amount": float(goal.current_amount),
+        "account_breakdown": get_account_virtual_allocation_breakdown(db, account_id)
+    }
+
+def release_funds_from_goal(
+    db: Session,
+    user_id: uuid.UUID,
+    goal_id: uuid.UUID,
+    amount: Decimal,
+    notes: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Releases funds from a savings goal back to the account's spendable balance.
+    """
+    amount = abs(Decimal(str(amount)))
+    if amount <= Decimal("0.00"):
+        raise HTTPException(status_code=400, detail="Release amount must be positive.")
+
+    goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id, FinancialGoal.user_id == user_id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found.")
+
+    current_allocated = Decimal(str(goal.current_amount or 0))
+    if amount > current_allocated:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot release more than currently allocated: ₹{current_allocated:,.2f}"
+        )
+
+    account_id = goal.linked_account_id
+    goal.current_amount = current_allocated - amount
+    if goal.current_amount < Decimal(str(goal.target_amount or 0)):
+        goal.is_completed = False
+
+    if account_id:
+        ledger = GoalAllocationLedger(
+            user_id=user_id,
+            goal_id=goal_id,
+            account_id=account_id,
+            amount=amount,
+            direction=GoalAllocationDirection.RELEASE,
+            notes=notes or f"Released ₹{amount:,.2f} from {goal.name}"
+        )
+        db.add(ledger)
+
+    db.commit()
+
+    return {
+        "message": f"Successfully released ₹{amount:,.2f} from {goal.name}",
+        "goal_id": str(goal.id),
+        "goal_current_amount": float(goal.current_amount),
+        "account_breakdown": get_account_virtual_allocation_breakdown(db, account_id) if account_id else None
     }

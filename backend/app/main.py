@@ -244,6 +244,8 @@ class AccountResponse(BaseModel):
     classification: str
     subtype: str
     balance: Decimal
+    goal_locked_amount: Optional[Decimal] = Decimal("0.00")
+    spendable_balance: Optional[Decimal] = None
 
     class Config:
         from_attributes = True
@@ -879,19 +881,28 @@ def purge_all_transactions(db: Session = Depends(get_db), current_user = Depends
 
 @app.delete("/api/transactions/{transaction_id}")
 def delete_transaction(transaction_id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
-    """Delete a single transaction by ID and adjust the account balance."""
+    """Delete a single transaction by ID and adjust the account balance. Reverts counterpart if part of an internal transfer pair."""
     tx = db.query(Transaction).filter(Transaction.id == transaction_id, Transaction.user_id == current_user.id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
         
     try:
+        from app.models import TransferLink
+        link = db.query(TransferLink).filter(
+            (TransferLink.from_transaction_id == tx.id) | (TransferLink.to_transaction_id == tx.id)
+        ).first()
+        if link:
+            from app.services.transfers import delete_atomic_transfer
+            return delete_atomic_transfer(db, current_user.id, link.id)
+
         # Revert account balance
         account = tx.account
         from app.models import AccountSubtype
-        if account.subtype in [AccountSubtype.SAVINGS, AccountSubtype.CURRENT]:
-            account.balance -= tx.amount
-        else:
-            account.balance += tx.amount
+        if account:
+            if account.subtype in [AccountSubtype.SAVINGS, AccountSubtype.CURRENT]:
+                account.balance -= tx.amount
+            else:
+                account.balance += tx.amount
             
         db.delete(tx)
         db.commit()
@@ -3204,6 +3215,302 @@ def list_dev_events(db: Session = Depends(get_db), current_user = Depends(is_dev
             } for t in e.transactions]
         })
     return results
+
+# =====================================================================
+# PHASE 8: FIREFLY III ARCHITECTURAL ENHANCEMENTS
+# =====================================================================
+
+# 1. ATOMIC DOUBLE-ENTRY TRANSFERS
+class TransferCreateRequest(BaseModel):
+    from_account_id: uuid.UUID
+    to_account_id: uuid.UUID
+    amount: Decimal
+    transfer_date: date_type
+    description: Optional[str] = None
+    reference_id: Optional[str] = None
+
+@app.post("/api/transfers")
+def api_create_transfer(
+    req: TransferCreateRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Creates an atomic double-entry transfer pair between two accounts."""
+    from app.services.transfers import create_atomic_transfer
+    link = create_atomic_transfer(
+        db=db,
+        user_id=current_user.id,
+        from_account_id=req.from_account_id,
+        to_account_id=req.to_account_id,
+        amount=req.amount,
+        transfer_date=req.transfer_date,
+        description=req.description,
+        reference_id=req.reference_id
+    )
+    # Trigger webhook
+    try:
+        from app.services.webhook_dispatcher import dispatch_webhook_event_sync
+        from app.models import WebhookEventType
+        dispatch_webhook_event_sync(db, current_user.id, WebhookEventType.TRANSFER_COMPLETED.value, {
+            "transfer_id": str(link.id),
+            "amount": float(link.amount),
+            "date": str(link.transfer_date)
+        })
+    except Exception:
+        pass
+
+    return {
+        "message": "Transfer pair created successfully",
+        "transfer_id": str(link.id),
+        "amount": float(link.amount),
+        "date": str(link.transfer_date)
+    }
+
+@app.get("/api/transfers")
+def api_list_transfers(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Lists all atomic transfer pairs with source and destination details."""
+    from app.services.transfers import get_user_transfers
+    return get_user_transfers(db, current_user.id)
+
+@app.delete("/api/transfers/{link_id}")
+def api_delete_transfer(
+    link_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Atomically reverts both accounts and deletes transfer legs."""
+    from app.services.transfers import delete_atomic_transfer
+    return delete_atomic_transfer(db, current_user.id, link_id)
+
+
+# 2. AUTO-ROLLOVER ENVELOPE BUDGETS
+class BudgetCreateRequest(BaseModel):
+    category: str
+    monthly_limit: Decimal
+    budget_mode: Optional[str] = "ROLLOVER_SURPLUS_ONLY"
+
+@app.get("/api/budgets")
+def api_get_budgets(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Fetches real-time envelope budget statuses with rollover calculations."""
+    from app.services.budget_engine import get_or_create_monthly_budget_status
+    now = date_type.today()
+    y = year or now.year
+    m = month or now.month
+    return get_or_create_monthly_budget_status(db, current_user.id, y, m)
+
+@app.post("/api/budgets")
+def api_create_or_update_budget(
+    req: BudgetCreateRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Creates or updates a category envelope budget with rollover mode."""
+    from app.services.budget_engine import set_envelope_budget
+    from app.models import BudgetMode
+    try:
+        mode = BudgetMode(req.budget_mode)
+    except ValueError:
+        mode = BudgetMode.ROLLOVER_SURPLUS_ONLY
+
+    budget = set_envelope_budget(
+        db=db,
+        user_id=current_user.id,
+        category=req.category,
+        monthly_limit=req.monthly_limit,
+        budget_mode=mode
+    )
+    return {
+        "message": f"Envelope budget for '{budget.category}' set to ₹{float(budget.monthly_limit):,.2f}",
+        "budget_id": str(budget.id),
+        "category": budget.category,
+        "monthly_limit": float(budget.monthly_limit),
+        "budget_mode": budget.budget_mode.value
+    }
+
+@app.delete("/api/budgets/{budget_id}")
+def api_delete_budget(
+    budget_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Deletes an envelope budget and its period records."""
+    from app.services.budget_engine import delete_envelope_budget
+    return delete_envelope_budget(db, current_user.id, budget_id)
+
+
+# 3. PIGGY BANK VIRTUAL ALLOCATIONS
+class GoalAllocationRequest(BaseModel):
+    account_id: uuid.UUID
+    amount: Decimal
+    notes: Optional[str] = None
+
+class GoalReleaseRequest(BaseModel):
+    amount: Decimal
+    notes: Optional[str] = None
+
+@app.get("/api/accounts/{account_id}/goals-breakdown")
+def api_account_goals_breakdown(
+    account_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Computes spendable vs goal-locked balances for a liquid account."""
+    from app.services.goals import get_account_virtual_allocation_breakdown
+    return get_account_virtual_allocation_breakdown(db, account_id)
+
+@app.post("/api/goals/{goal_id}/allocate")
+def api_goal_allocate(
+    goal_id: uuid.UUID,
+    req: GoalAllocationRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Allocates virtual funds from a liquid account to a savings goal."""
+    from app.services.goals import allocate_funds_to_goal
+    return allocate_funds_to_goal(
+        db=db,
+        user_id=current_user.id,
+        goal_id=goal_id,
+        account_id=req.account_id,
+        amount=req.amount,
+        notes=req.notes
+    )
+
+@app.post("/api/goals/{goal_id}/release")
+def api_goal_release(
+    goal_id: uuid.UUID,
+    req: GoalReleaseRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Releases funds from a savings goal back to the account spendable balance."""
+    from app.services.goals import release_funds_from_goal
+    return release_funds_from_goal(
+        db=db,
+        user_id=current_user.id,
+        goal_id=goal_id,
+        amount=req.amount,
+        notes=req.notes
+    )
+
+
+# 4. WEBHOOK DISPATCHER & MANAGEMENT
+class WebhookCreateRequest(BaseModel):
+    url: str
+    secret: Optional[str] = None
+    description: Optional[str] = None
+    subscribed_events: Optional[List[str]] = None
+
+@app.get("/api/webhooks")
+def api_list_webhooks(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Lists registered webhook endpoints for current user."""
+    from app.models import WebhookEndpoint
+    import json
+    endpoints = db.query(WebhookEndpoint).filter(WebhookEndpoint.user_id == current_user.id).all()
+    results = []
+    for ep in endpoints:
+        results.append({
+            "id": str(ep.id),
+            "url": ep.url,
+            "description": ep.description,
+            "subscribed_events": json.loads(ep.subscribed_events or "[]"),
+            "is_active": ep.is_active,
+            "created_at": ep.created_at.isoformat() if ep.created_at else None
+        })
+    return results
+
+@app.post("/api/webhooks")
+def api_create_webhook(
+    req: WebhookCreateRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Registers a new webhook endpoint with HMAC-SHA256 signing."""
+    from app.services.webhook_dispatcher import register_webhook_endpoint
+    import json
+    ep = register_webhook_endpoint(
+        db=db,
+        user_id=current_user.id,
+        url=req.url,
+        secret=req.secret,
+        description=req.description,
+        subscribed_events=req.subscribed_events
+    )
+    return {
+        "message": "Webhook endpoint registered successfully",
+        "id": str(ep.id),
+        "url": ep.url,
+        "secret": ep.secret,
+        "subscribed_events": json.loads(ep.subscribed_events)
+    }
+
+@app.delete("/api/webhooks/{endpoint_id}")
+def api_delete_webhook(
+    endpoint_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Deletes a webhook endpoint."""
+    from app.models import WebhookEndpoint
+    ep = db.query(WebhookEndpoint).filter(
+        WebhookEndpoint.id == endpoint_id,
+        WebhookEndpoint.user_id == current_user.id
+    ).first()
+    if not ep:
+        raise HTTPException(status_code=404, detail="Webhook endpoint not found")
+    db.delete(ep)
+    db.commit()
+    return {"message": "Webhook endpoint deleted successfully"}
+
+@app.post("/api/webhooks/{endpoint_id}/test")
+def api_test_webhook(
+    endpoint_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Dispatches a TEST_PING to an endpoint."""
+    from app.services.webhook_dispatcher import send_test_ping
+    return send_test_ping(db, current_user.id, endpoint_id)
+
+@app.get("/api/webhooks/{endpoint_id}/deliveries")
+def api_webhook_deliveries(
+    endpoint_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Returns recent delivery logs for a webhook endpoint."""
+    from app.models import WebhookEndpoint, WebhookDelivery
+    ep = db.query(WebhookEndpoint).filter(
+        WebhookEndpoint.id == endpoint_id,
+        WebhookEndpoint.user_id == current_user.id
+    ).first()
+    if not ep:
+        raise HTTPException(status_code=404, detail="Webhook endpoint not found")
+
+    deliveries = db.query(WebhookDelivery).filter(
+        WebhookDelivery.webhook_id == endpoint_id
+    ).order_by(WebhookDelivery.created_at.desc()).limit(50).all()
+
+    return [{
+        "id": str(d.id),
+        "event_type": d.event_type,
+        "status_code": d.status_code,
+        "duration_ms": d.duration_ms,
+        "success": d.success,
+        "error_message": d.error_message,
+        "created_at": d.created_at.isoformat() if d.created_at else None
+    } for d in deliveries]
 
 
 
