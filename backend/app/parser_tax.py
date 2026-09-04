@@ -54,14 +54,14 @@ def verify_tax_record_with_ai(extracted_data: Dict[str, Any], raw_text: str) -> 
     """
     
     try:
-        # Assumes query_ollama_json exists in ai.py or is easily implementable
-        # Not using heavy LLM context, keeping token size small.
-        # response = query_ollama_json(prompt, model="phi3:instruct")
-        
-        # Placeholder for LLM response
+        response = query_ollama_json(prompt, timeout=45)
+        if isinstance(response, dict) and response:
+            response["verified_by_ai"] = True
+            return response
         corrected_data = extracted_data
         corrected_data["verified_by_ai"] = True
         return corrected_data
     except Exception as e:
-        logger.error(f"Error in LLM Tax verification: {e}")
+        logger.warning(f"Ollama Tax verification fell back to deterministic: {e}")
+        extracted_data["verified_by_ai"] = False
         return extracted_data

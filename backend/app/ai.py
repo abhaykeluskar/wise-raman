@@ -1,9 +1,12 @@
 import json
 import logging
 import time
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
+import httpx
 import requests
+from pydantic import BaseModel, Field
 from requests.adapters import HTTPAdapter
 from sqlalchemy.orm import joinedload
 from urllib3.util.retry import Retry
@@ -31,15 +34,15 @@ CATEGORIES = [
     "Others",
 ]
 
-KEEP_ALIVE = "30m"
+KEEP_ALIVE = "60m"
 RAG_CONTEXT_LIMIT = 24
 CATEGORIZE_NUM_PREDICT = 192
 RAG_NUM_PREDICT = 640
 
 _session = requests.Session()
 _adapter = HTTPAdapter(
-    pool_connections=4,
-    pool_maxsize=8,
+    pool_connections=8,
+    pool_maxsize=16,
     max_retries=Retry(total=2, backoff_factor=0.25, status_forcelist=[502, 503, 504]),
 )
 _session.mount("http://", _adapter)
@@ -55,18 +58,30 @@ ALLOWED_OLLAMA_HOSTS = {
 }
 
 
+class CategorizationResult(BaseModel):
+    category: str = Field(description="One of the allowed categories")
+    subcategory: str = Field(description="Specific subcategory")
+    clean_description: str = Field(description="Clean merchant or vendor name")
+
+
 def find_working_ollama_url() -> str:
     """Check configured OLLAMA_URL or candidate URLs to find a live Ollama instance."""
     candidates = []
     if settings.OLLAMA_URL:
-        candidates.append(settings.OLLAMA_URL.strip().rstrip('/'))
-    for u in ["http://finance_ollama:11434", "http://ollama:11434", "http://host.docker.internal:11434", "http://localhost:11434", "http://127.0.0.1:11434"]:
+        candidates.append(settings.OLLAMA_URL.strip().rstrip("/"))
+    for u in [
+        "http://finance_ollama:11434",
+        "http://ollama:11434",
+        "http://host.docker.internal:11434",
+        "http://localhost:11434",
+        "http://127.0.0.1:11434",
+    ]:
         if u not in candidates:
             candidates.append(u)
-            
+
     for url in candidates:
         try:
-            res = _session.get(f"{url}/api/tags", timeout=2)
+            res = _session.get(f"{url}/api/tags", timeout=1.5)
             if res.status_code == 200:
                 if settings.OLLAMA_URL != url:
                     logger.info(f"Ollama auto-detected and connected at: {url}")
@@ -74,7 +89,7 @@ def find_working_ollama_url() -> str:
                 return url
         except Exception:
             continue
-    return settings.OLLAMA_URL.strip().rstrip('/')
+    return settings.OLLAMA_URL.strip().rstrip("/")
 
 
 def is_safe_ollama_url(url: str) -> bool:
@@ -97,7 +112,14 @@ def llm_options(num_predict: int, num_ctx: int | None = None) -> dict:
     }
 
 
-def ollama_generate(prompt: str, *, system: str | None = None, fmt=None, num_predict: int = RAG_NUM_PREDICT, timeout: int = 90):
+def ollama_generate(
+    prompt: str,
+    *,
+    system: str | None = None,
+    fmt=None,
+    num_predict: int = RAG_NUM_PREDICT,
+    timeout: int = 90,
+):
     active_url = find_working_ollama_url()
     payload = {
         "model": settings.LLM_MODEL,
@@ -114,6 +136,84 @@ def ollama_generate(prompt: str, *, system: str | None = None, fmt=None, num_pre
     if fmt is not None:
         payload["format"] = fmt
     return _session.post(f"{active_url}/api/generate", json=payload, timeout=timeout)
+
+
+def query_ollama_json(
+    prompt: str,
+    schema: dict | None = None,
+    model: str | None = None,
+    system: str | None = None,
+    timeout: int = 90,
+) -> Dict[str, Any]:
+    """Execute a structured JSON prompt against Ollama and parse result."""
+    active_url = find_working_ollama_url()
+    payload = {
+        "model": model or settings.LLM_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "keep_alive": KEEP_ALIVE,
+        "options": {
+            **llm_options(RAG_NUM_PREDICT),
+            "num_gpu": -1,
+        },
+    }
+    if system:
+        payload["system"] = system
+    if schema is not None:
+        payload["format"] = schema
+    else:
+        payload["format"] = "json"
+
+    res = _session.post(f"{active_url}/api/generate", json=payload, timeout=timeout)
+    res.raise_for_status()
+    raw = res.json().get("response", "{}")
+    raw = raw.strip()
+    if raw.startswith("```json"):
+        raw = raw[7:]
+    if raw.startswith("```"):
+        raw = raw[3:]
+    if raw.endswith("```"):
+        raw = raw[:-3]
+    return json.loads(raw)
+
+
+async def stream_ollama_chat(
+    messages: List[Dict[str, str]],
+    system: Optional[str] = None,
+    num_predict: int = RAG_NUM_PREDICT,
+    temperature: float = 0.0,
+) -> AsyncGenerator[str, None]:
+    """Streams token chunks from Ollama chat API using Server-Sent Events / async stream."""
+    active_url = find_working_ollama_url()
+    chat_messages = []
+    if system:
+        chat_messages.append({"role": "system", "content": system})
+    chat_messages.extend(messages)
+
+    payload = {
+        "model": settings.LLM_MODEL,
+        "messages": chat_messages,
+        "stream": True,
+        "keep_alive": KEEP_ALIVE,
+        "options": {
+            "temperature": temperature,
+            "num_ctx": settings.LLM_NUM_CTX,
+            "num_predict": num_predict,
+            "num_gpu": -1,
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream("POST", f"{active_url}/api/chat", json=payload) as response:
+            async for line in response.aiter_lines():
+                if line:
+                    try:
+                        chunk = json.loads(line)
+                        content = chunk.get("message", {}).get("content", "")
+                        if content:
+                            yield content
+                    except Exception:
+                        continue
 
 
 def ensure_models_exist():
@@ -153,7 +253,51 @@ def ensure_models_exist():
         return False
 
 
-def get_embedding(text_to_embed):
+async def get_embeddings_batch(
+    texts: List[str], batch_size: int = 64
+) -> List[Optional[List[float]]]:
+    """Generate 768-dim vector embeddings for a list of texts in concurrent batches via Ollama /api/embed."""
+    if not texts:
+        return []
+
+    active_url = find_working_ollama_url()
+    all_embeddings: List[Optional[List[float]]] = []
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for i in range(0, len(texts), batch_size):
+            chunk = texts[i : i + batch_size]
+            try:
+                res = await client.post(
+                    f"{active_url}/api/embed",
+                    json={
+                        "model": settings.EMBEDDING_MODEL,
+                        "input": chunk,
+                        "keep_alive": KEEP_ALIVE,
+                    },
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    chunk_embs = data.get("embeddings", [])
+                    all_embeddings.extend(chunk_embs)
+                else:
+                    # Fallback single item legacy endpoint
+                    for t in chunk:
+                        legacy_res = await client.post(
+                            f"{active_url}/api/embeddings",
+                            json={"model": settings.EMBEDDING_MODEL, "prompt": t},
+                        )
+                        if legacy_res.status_code == 200:
+                            all_embeddings.append(legacy_res.json().get("embedding"))
+                        else:
+                            all_embeddings.append(None)
+            except Exception as e:
+                logger.error(f"Batch embedding error for chunk {i}: {e}")
+                all_embeddings.extend([None] * len(chunk))
+
+    return all_embeddings
+
+
+def get_embedding(text_to_embed: str) -> Optional[List[float]]:
     """Generate vector embedding using Ollama (/api/embed, with legacy fallback)."""
     t0 = time.time()
     base = find_working_ollama_url()
@@ -189,38 +333,43 @@ def get_embedding(text_to_embed):
         return None
 
 
-def categorize_transaction(description, amount, categories=None):
-    """Categorize a transaction using merchant rules first, then a short LLM call."""
+def categorize_transaction(
+    description: str, amount: float, categories: Optional[List[str]] = None
+) -> Tuple[str, str, str]:
+    """Categorize a transaction using merchant rules first, then schema-constrained LLM call."""
     allowed_categories = categories if categories else CATEGORIES
 
     known_match = match_known_merchant(description)
     if known_match:
         clean_name, cat, subcat = known_match
         if cat in allowed_categories:
-            telemetry.log(f"Fast-Matched '{description[:25]}' -> {cat} ({subcat}) via Indian merchant engine")
+            telemetry.log(
+                f"Fast-Matched '{description[:25]}' -> {cat} ({subcat}) via Indian merchant engine"
+            )
             return cat, subcat, clean_name
 
     cats = ", ".join(allowed_categories)
     prompt = (
-        "Classify this Indian bank transaction. Reply JSON only.\n"
+        "Classify this Indian bank transaction. Return strictly JSON.\n"
         f"Categories: {cats}\n"
-        'Schema: {"category":"...","subcategory":"...","clean_description":"..."}\n'
         f'Description: "{description}"\n'
-        f"Amount: {amount} (negative=spend)\n"
+        f"Amount: {amount} (negative=spend, positive=income)\n"
     )
 
     try:
+        schema = CategorizationResult.model_json_schema()
         response = ollama_generate(
             prompt,
-            fmt="json",
+            fmt=schema,
             num_predict=CATEGORIZE_NUM_PREDICT,
             timeout=25,
         )
 
         if response.status_code == 200:
-            result = json.loads(response.json().get("response", "{}") or "{}")
-            category = result.get("category")
-            subcategory = result.get("subcategory")
+            raw_text = response.json().get("response", "{}") or "{}"
+            result = json.loads(raw_text)
+            category = result.get("category", "Others")
+            subcategory = result.get("subcategory", "General")
             clean_description = result.get("clean_description", description)
 
             if category not in allowed_categories:
@@ -235,7 +384,7 @@ def categorize_transaction(description, amount, categories=None):
         return "Others", "Uncategorized", description
 
 
-def query_financial_rag(db, user_query, user_id):
+def query_financial_rag(db, user_query: str, user_id: Any) -> str:
     """Search relevant embedded transactions and answer with a compact local LLM call."""
     telemetry.log(f"RAG Query: '{user_query[:50]}...'")
 
@@ -244,7 +393,9 @@ def query_financial_rag(db, user_query, user_id):
     embed_ms = (time.time() - t0) * 1000
     if not query_vector:
         telemetry.log("Vector embedding generation failed - generator offline", level="ERROR")
-        return "Sorry, I could not process your query because the embedding generator is currently offline."
+        return (
+            "Sorry, I could not process your query because the embedding generator is currently offline."
+        )
 
     telemetry.log(f"Generated 768-dim query embedding ({embed_ms:.1f}ms)")
 
@@ -297,7 +448,9 @@ def query_financial_rag(db, user_query, user_id):
             response_text = res_data.get("response", "No answer received.")
             eval_count = res_data.get("eval_count", len(response_text.split()))
             t_rate = (eval_count / llm_duration) if llm_duration > 0 else 0
-            telemetry.log(f"Inference complete: {eval_count} tokens in {llm_duration:.2f}s ({t_rate:.1f} t/s)")
+            telemetry.log(
+                f"Inference complete: {eval_count} tokens in {llm_duration:.2f}s ({t_rate:.1f} t/s)"
+            )
             return response_text
         telemetry.log(f"LLM generation failed: HTTP {response.status_code}", level="ERROR")
         return "The local AI engine returned an error. Check that Ollama is running and the model is pulled."

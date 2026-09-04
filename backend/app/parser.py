@@ -1759,54 +1759,61 @@ def parse_statement(
         "closing_balance": statement_summary.get("total_amount_due")
     }
 
+class PayslipExtractionSchema(BaseModel):
+    employee_id: Optional[str] = None
+    employee_name: Optional[str] = None
+    company_name: Optional[str] = None
+    period_month: Optional[int] = None
+    period_year: Optional[int] = None
+    bank_account_no: Optional[str] = None
+    basic_salary: float = 0.0
+    hra: float = 0.0
+    special_allowance: float = 0.0
+    other_earnings: float = 0.0
+    gross_earnings: float = 0.0
+    provident_fund: float = 0.0
+    professional_tax: float = 0.0
+    income_tax_tds: float = 0.0
+    other_deductions: float = 0.0
+    gross_deductions: float = 0.0
+    net_pay: float = 0.0
+
+
 def parse_payslip(file_bytes: bytes, password: Optional[str] = None) -> Dict[str, Any]:
-    """Parse Payslip PDF using Ollama LLM."""
+    """Parse Payslip PDF using Ollama LLM with schema-constrained JSON output."""
     from app.config import settings
+    from app.ai import find_working_ollama_url
     pages = extract_pdf_pages_text(file_bytes, password=password)
     text = "\n".join(pages)
     
-    prompt = f"""
-You are an expert payslip parser. Extract the following information from this Indian payslip text and return it strictly as valid JSON.
-Do NOT include any markdown formatting, backticks, or other text outside the JSON object.
+    prompt = f"""You are an expert payslip parser. Extract employee earnings and deductions from this Indian payslip.
+Return strictly the extracted fields matching the schema.
 
-Extract these fields:
-- employee_id (string or null)
-- employee_name (string or null)
-- company_name (string or null)
-- period_month (integer, 1-12 representing the month)
-- period_year (integer, e.g., 2025)
-- bank_account_no (string or null)
-- basic_salary (number, defaults to 0)
-- hra (number, defaults to 0)
-- special_allowance (number, defaults to 0)
-- other_earnings (number, defaults to 0)
-- gross_earnings (number)
-- provident_fund (number, defaults to 0)
-- professional_tax (number, defaults to 0)
-- income_tax_tds (number, defaults to 0)
-- other_deductions (number, defaults to 0)
-- gross_deductions (number)
-- net_pay (number)
-
-Text to parse:
-{text}
+Payslip Text:
+{text[:4000]}
 """
     try:
+        active_url = find_working_ollama_url()
+        schema = PayslipExtractionSchema.model_json_schema()
         response = requests.post(
-            f"{settings.OLLAMA_URL}/api/generate",
+            f"{active_url}/api/generate",
             json={
-                "model": "qwen2.5:3b",
+                "model": settings.LLM_MODEL,
                 "prompt": prompt,
                 "stream": False,
-                "format": "json"
+                "format": schema,
+                "options": {
+                    "temperature": 0.0,
+                    "num_predict": 512,
+                    "num_ctx": 4096,
+                }
             },
-            timeout=180
+            timeout=120
         )
         response.raise_for_status()
         data = response.json()
         
-        # Sometimes Ollama returns backticks even with format=json
-        resp_text = data["response"].strip()
+        resp_text = data.get("response", "{}").strip()
         if resp_text.startswith("```json"):
             resp_text = resp_text[7:]
         if resp_text.startswith("```"):
@@ -1815,6 +1822,23 @@ Text to parse:
             resp_text = resp_text[:-3]
             
         parsed_json = json.loads(resp_text)
+        
+        # Ensure all numeric fields are safe floats
+        num_fields = [
+            "basic_salary", "hra", "special_allowance", "other_earnings",
+            "gross_earnings", "provident_fund", "professional_tax",
+            "income_tax_tds", "other_deductions", "gross_deductions", "net_pay"
+        ]
+        for nf in num_fields:
+            raw_val = parsed_json.get(nf)
+            if raw_val is None:
+                parsed_json[nf] = 0.0
+            elif isinstance(raw_val, str):
+                cleaned = re.sub(r"[^\d.]", "", raw_val)
+                parsed_json[nf] = float(cleaned) if cleaned else 0.0
+            else:
+                parsed_json[nf] = float(raw_val)
+
         return parsed_json
     except Exception as e:
         logger.error(f"Error parsing payslip via LLM: {str(e)}")

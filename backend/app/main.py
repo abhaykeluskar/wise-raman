@@ -1,7 +1,7 @@
 import uuid
 import threading
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import date as date_type
 
@@ -285,6 +285,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    evidence: Optional[Dict[str, Any]] = None
 
 class CategoryCreate(BaseModel):
     name: str
@@ -372,7 +373,9 @@ class SelectivePurgeRequest(BaseModel):
 
 # --- Background Task for AI Enrichment ---
 def enrich_transactions_task(transaction_ids: List[uuid.UUID]):
-    """Background task to run Ollama categorization and vector embedding creation."""
+    """Optimized background task using batch embeddings and fast categorization."""
+    import asyncio
+    from app.ai import get_embeddings_batch, get_embedding
     db = SessionLocal()
     try:
         db_categories = db.query(Category).all()
@@ -383,31 +386,51 @@ def enrich_transactions_task(transaction_ids: List[uuid.UUID]):
             .filter(Transaction.id.in_(transaction_ids))
             .all()
         )
+        if not txs:
+            return
 
-        for i, tx in enumerate(txs, 1):
-            if not tx.category or tx.category in ["Processing...", "Parsing..."]:
+        # 1. Categorize transactions that need categorization
+        for tx in txs:
+            if not tx.category or tx.category in ["Processing...", "Parsing...", "UNKNOWN"]:
                 category, subcategory, clean_description = categorize_transaction(
                     tx.description, float(tx.amount), categories_list
                 )
                 tx.category = category
                 tx.subcategory = subcategory
                 tx.description = clean_description
+        db.commit()
 
-            bank_name = tx.account.bank.name if tx.account and tx.account.bank else "Unknown"
-            embed_text = (
-                f"Date: {tx.date}. Bank: {bank_name}. Description: {tx.description}. "
-                f"Amount: {tx.amount}. Category: {tx.category}. Subcategory: {tx.subcategory}."
-            )
-            embedding = get_embedding(embed_text)
-            if embedding:
-                tx.embedding = embedding
-            if i % 8 == 0:
+        # 2. Batch Embedding Generation (up to 64 transactions per call)
+        texts_to_embed = []
+        txs_to_embed = []
+        for tx in txs:
+            if not tx.embedding:
+                bank_name = tx.account.bank.name if tx.account and tx.account.bank else "Unknown"
+                embed_text = (
+                    f"Date: {tx.date}. Bank: {bank_name}. Description: {tx.description}. "
+                    f"Amount: {tx.amount}. Category: {tx.category}. Subcategory: {tx.subcategory}."
+                )
+                texts_to_embed.append(embed_text)
+                txs_to_embed.append(tx)
+
+        if texts_to_embed:
+            try:
+                embeddings = asyncio.run(get_embeddings_batch(texts_to_embed, batch_size=64))
+                for tx, emb in zip(txs_to_embed, embeddings):
+                    if emb:
+                        tx.embedding = emb
+                db.commit()
+            except Exception as embed_err:
+                logger.warning(f"Batch embedding failed in background, falling back to individual: {embed_err}")
+                for tx, text in zip(txs_to_embed, texts_to_embed):
+                    emb = get_embedding(text)
+                    if emb:
+                        tx.embedding = emb
                 db.commit()
 
-        db.commit()
         if txs and txs[0].account:
             run_bridge_algorithm(db, txs[0].account.user_id)
-        logger.info(f"Successfully processed {len(txs)} transactions in background.")
+        logger.info(f"Successfully processed and embedded {len(txs)} transactions in background.")
     except Exception as e:
         logger.error(f"Error in background enrichment: {str(e)}")
     finally:
@@ -1037,9 +1060,65 @@ def delete_category(identifier: str, background_tasks: BackgroundTasks, db: Sess
 
 @app.post("/api/chat", response_model=ChatResponse)
 def chat_with_history(request: ChatRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
-    """Conversational interface using RAG across transaction history."""
+    """Conversational interface combining Deterministic Copilot Agent and RAG."""
+    from app.ai_copilot.agent import FinancialCopilotAgent
+    
+    # 1. Try Evidence-Based Deterministic Copilot first
+    try:
+        agent = FinancialCopilotAgent(db)
+        copilot_result = agent.process_query(current_user.id, request.message)
+        evidence = copilot_result.get("evidence", {})
+        calc = evidence.get("calculation", {})
+        
+        # If the query planner found matching transactions, use the grounded copilot response
+        if calc.get("count", 0) > 0:
+            return ChatResponse(
+                response=copilot_result["response"],
+                evidence=evidence
+            )
+    except Exception as agent_err:
+        logger.warning(f"Deterministic copilot fallback to RAG: {agent_err}")
+        
+    # 2. Fallback to semantic pgvector RAG for open-ended queries
     response_text = query_financial_rag(db, request.message, current_user.id)
     return ChatResponse(response=response_text)
+
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatRequest, current_user = Depends(get_current_user)):
+    """Stream AI chat tokens via Server-Sent Events (SSE)."""
+    from app.ai import stream_ollama_chat
+    system_prompt = (
+        "You are WiseRaman, an expert personal finance assistant. "
+        "Answer questions concisely and directly in professional Markdown."
+    )
+    messages = [{"role": "user", "content": request.message}]
+    
+    async def token_generator():
+        try:
+            async for token in stream_ollama_chat(messages, system=system_prompt):
+                yield f"data: {json.dumps({'token': token})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+            
+    return StreamingResponse(token_generator(), media_type="text/event-stream")
+
+@app.post("/api/copilot/query")
+def copilot_query_api(request: ChatRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """Direct API for Evidence-Based Copilot query planner and grounded agent."""
+    from app.ai_copilot.agent import FinancialCopilotAgent
+    agent = FinancialCopilotAgent(db)
+    return agent.process_query(current_user.id, request.message)
+
+@app.get("/api/copilot/monthly-review")
+def copilot_monthly_review_api(month: Optional[str] = None, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """Synthesizes monthly financial executive summary using verified numbers."""
+    from app.ai_copilot.agent import FinancialCopilotAgent
+    agent = FinancialCopilotAgent(db)
+    month_str = month or "the past month"
+    review = agent.generate_monthly_review(current_user.id, month_str)
+    return {"month": month_str, "review": review}
 
 @app.get("/api/ai/logs")
 async def stream_ai_logs():
