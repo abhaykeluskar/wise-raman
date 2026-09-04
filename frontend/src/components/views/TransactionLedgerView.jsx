@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinance } from '../../context/FinanceContext';
 import { useToast } from '../../context/ToastContext';
@@ -32,6 +32,7 @@ export const TransactionLedgerView = ({ onOpenUploadModal, onViewSource }) => {
 
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [selectedAccount, setSelectedAccount] = useState('ALL');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedRail, setSelectedRail] = useState('ALL');
@@ -146,9 +147,9 @@ export const TransactionLedgerView = ({ onOpenUploadModal, onViewSource }) => {
         return false;
       }
 
-      // Search Query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+      // Search Query (using deferred search query for zero typing lag)
+      if (deferredSearchQuery.trim()) {
+        const q = deferredSearchQuery.toLowerCase();
         const desc = (tx.description || '').toLowerCase();
         const merch = (tx.merchant || '').toLowerCase();
         const ref = (tx.reference || '').toLowerCase();
@@ -160,7 +161,7 @@ export const TransactionLedgerView = ({ onOpenUploadModal, onViewSource }) => {
 
       return true;
     });
-  }, [transactions, selectedAccount, selectedCategory, selectedRail, flowFilter, selectedMonth, selectedDate, searchQuery]);
+  }, [transactions, selectedAccount, selectedCategory, selectedRail, flowFilter, selectedMonth, selectedDate, deferredSearchQuery]);
 
   // Summary strip metrics
   const summary = useMemo(() => {
@@ -437,7 +438,7 @@ export const TransactionLedgerView = ({ onOpenUploadModal, onViewSource }) => {
               <div
                 key={tx.id}
                 onClick={() => setActiveTxForDrawer(tx)}
-                className={`group px-4 py-3 transition-colors duration-150 cursor-pointer ${
+                className={`group px-4 py-3 transition-colors duration-150 cursor-pointer cv-auto ${
                   isDark ? 'hover:bg-[#1C251F]' : 'hover:bg-[#F1F8F4]/40'
                 }`}
               >

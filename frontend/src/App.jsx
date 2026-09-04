@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { FinanceProvider, useFinance } from './context/FinanceContext';
 import { ToastProvider } from './context/ToastContext';
@@ -15,29 +15,30 @@ import { AddAccountModal } from './components/organisms/AddAccountModal';
 import { AddCardModal } from './components/organisms/AddCardModal';
 import { EditCardModal } from './components/organisms/EditCardModal';
 import { ErrorBoundary } from './components/atoms/ErrorBoundary';
+import { ViewSkeleton } from './components/atoms/ViewSkeleton';
 
-// 15 Core Workspaces
-import { DashboardView } from './components/views/DashboardView';
-import { TransactionLedgerView } from './components/views/TransactionLedgerView';
-import { BankAccountsView } from './components/views/BankAccountsView';
-import { CardPortfolioView } from './components/views/CardPortfolioView';
-import { CashFlowView } from './components/views/CashFlowView';
-import { FinancialHealthView } from './components/views/FinancialHealthView';
-import { InsightsView } from './components/views/InsightsView';
-import { FinancialCalendarView } from './components/views/FinancialCalendarView';
-import { AiAssistantView } from './components/views/AiAssistantView';
-import { DocumentsView } from './components/views/DocumentsView';
-import { ReviewCenterView } from './components/views/ReviewCenterView';
-import { ReportsView } from './components/views/ReportsView';
-import { SettingsView } from './components/views/SettingsView';
-import { BackupRecoveryView } from './components/views/BackupRecoveryView';
-import { TruthInspectorView } from './components/views/TruthInspectorView';
-import { PayslipsView } from './components/views/PayslipsView';
-import { HouseholdOSView } from './components/views/HouseholdOSView';
+// Code-Split Dynamic Lazy Loading for all 19 Workspaces
+const DashboardView = lazy(() => import('./components/views/DashboardView').then(m => ({ default: m.DashboardView })));
+const TransactionLedgerView = lazy(() => import('./components/views/TransactionLedgerView').then(m => ({ default: m.TransactionLedgerView })));
+const BankAccountsView = lazy(() => import('./components/views/BankAccountsView').then(m => ({ default: m.BankAccountsView })));
+const CardPortfolioView = lazy(() => import('./components/views/CardPortfolioView').then(m => ({ default: m.CardPortfolioView })));
+const CashFlowView = lazy(() => import('./components/views/CashFlowView').then(m => ({ default: m.CashFlowView })));
+const FinancialHealthView = lazy(() => import('./components/views/FinancialHealthView').then(m => ({ default: m.FinancialHealthView })));
+const InsightsView = lazy(() => import('./components/views/InsightsView').then(m => ({ default: m.InsightsView })));
+const FinancialCalendarView = lazy(() => import('./components/views/FinancialCalendarView').then(m => ({ default: m.FinancialCalendarView })));
+const AiAssistantView = lazy(() => import('./components/views/AiAssistantView').then(m => ({ default: m.AiAssistantView })));
+const DocumentsView = lazy(() => import('./components/views/DocumentsView').then(m => ({ default: m.DocumentsView })));
+const ReviewCenterView = lazy(() => import('./components/views/ReviewCenterView').then(m => ({ default: m.ReviewCenterView })));
+const ReportsView = lazy(() => import('./components/views/ReportsView').then(m => ({ default: m.ReportsView })));
+const SettingsView = lazy(() => import('./components/views/SettingsView').then(m => ({ default: m.SettingsView })));
+const BackupRecoveryView = lazy(() => import('./components/views/BackupRecoveryView').then(m => ({ default: m.BackupRecoveryView })));
+const TruthInspectorView = lazy(() => import('./components/views/TruthInspectorView').then(m => ({ default: m.TruthInspectorView })));
+const PayslipsView = lazy(() => import('./components/views/PayslipsView').then(m => ({ default: m.PayslipsView })));
+const HouseholdOSView = lazy(() => import('./components/views/HouseholdOSView').then(m => ({ default: m.HouseholdOSView })));
 
-// Auth Views
-import { LoginView } from './components/views/LoginView';
-import { RegisterView } from './components/views/RegisterView';
+// Auth Views (Lazy loaded)
+const LoginView = lazy(() => import('./components/views/LoginView').then(m => ({ default: m.LoginView })));
+const RegisterView = lazy(() => import('./components/views/RegisterView').then(m => ({ default: m.RegisterView })));
 
 const MainLayout = () => {
   const { theme } = useTheme();
@@ -86,11 +87,13 @@ const MainLayout = () => {
       <div className={`min-h-screen font-sans ${
         theme === 'dark' ? 'bg-[#111713] text-[#F1F5F2]' : 'bg-[#F7F8F5] text-[#1D2822]'
       }`}>
-        {authMode === 'login' ? (
-          <LoginView onNavigateRegister={() => setAuthMode('register')} />
-        ) : (
-          <RegisterView onNavigateLogin={() => setAuthMode('login')} />
-        )}
+        <Suspense fallback={<ViewSkeleton />}>
+          {authMode === 'login' ? (
+            <LoginView onNavigateRegister={() => setAuthMode('register')} />
+          ) : (
+            <RegisterView onNavigateLogin={() => setAuthMode('login')} />
+          )}
+        </Suspense>
       </div>
     );
   }
@@ -124,115 +127,117 @@ const MainLayout = () => {
               </div>
             )}
 
-          {/* Page 01: Dashboard */}
-          {activeTab === 'dashboard' && (
-            <DashboardView
-              onSelectTransaction={(tx) => setSelectedTxForDrawer(tx)}
-              onNavigateTransactions={() => setActiveTab('transactions')}
-              onNavigateCashFlow={() => setActiveTab('cashflow')}
-              onNavigateInsights={() => setActiveTab('insights')}
-              selectedPeriod={selectedPeriod}
-            />
-          )}
+            <Suspense fallback={<ViewSkeleton />}>
+              {/* Page 01: Dashboard */}
+              {activeTab === 'dashboard' && (
+                <DashboardView
+                  onSelectTransaction={(tx) => setSelectedTxForDrawer(tx)}
+                  onNavigateTransactions={() => setActiveTab('transactions')}
+                  onNavigateCashFlow={() => setActiveTab('cashflow')}
+                  onNavigateInsights={() => setActiveTab('insights')}
+                  selectedPeriod={selectedPeriod}
+                />
+              )}
 
-          {/* Page 02: Transactions */}
-          {activeTab === 'transactions' && (
-            <TransactionLedgerView
-              onOpenUploadModal={() => setShowUploadModal(true)}
-              onViewSource={() => setActiveTab('documents')}
-            />
-          )}
+              {/* Page 02: Transactions */}
+              {activeTab === 'transactions' && (
+                <TransactionLedgerView
+                  onOpenUploadModal={() => setShowUploadModal(true)}
+                  onViewSource={() => setActiveTab('documents')}
+                />
+              )}
 
-          {/* Page 03: Accounts */}
-          {activeTab === 'accounts' && (
-            <BankAccountsView
-              onOpenAddAccount={() => setShowAddAccountModal(true)}
-              onNavigateLedger={() => setActiveTab('transactions')}
-            />
-          )}
+              {/* Page 03: Accounts */}
+              {activeTab === 'accounts' && (
+                <BankAccountsView
+                  onOpenAddAccount={() => setShowAddAccountModal(true)}
+                  onNavigateLedger={() => setActiveTab('transactions')}
+                />
+              )}
 
-          {/* Page 04: Credit Cards */}
-          {activeTab === 'cards' && (
-            <CardPortfolioView
-              onOpenAddCard={() => setShowAddCardModal(true)}
-              onOpenEditCard={(card) => setCardToEdit(card)}
-              onNavigateLedger={() => setActiveTab('transactions')}
-            />
-          )}
+              {/* Page 04: Credit Cards */}
+              {activeTab === 'cards' && (
+                <CardPortfolioView
+                  onOpenAddCard={() => setShowAddCardModal(true)}
+                  onOpenEditCard={(card) => setCardToEdit(card)}
+                  onNavigateLedger={() => setActiveTab('transactions')}
+                />
+              )}
 
-          {/* Page 05: Cash Flow */}
-          {activeTab === 'cashflow' && (
-            <CashFlowView />
-          )}
+              {/* Page 05: Cash Flow */}
+              {activeTab === 'cashflow' && (
+                <CashFlowView />
+              )}
 
-          {/* Page 06: Financial Health */}
-          {activeTab === 'health' && (
-            <FinancialHealthView />
-          )}
+              {/* Page 06: Financial Health */}
+              {activeTab === 'health' && (
+                <FinancialHealthView />
+              )}
 
-          {/* Page 07: Insights */}
-          {activeTab === 'insights' && (
-            <InsightsView
-              onOpenTransactionsWithFilter={(filter) => {
-                openInLedger(filter);
-                setActiveTab('transactions');
-              }}
-            />
-          )}
+              {/* Page 07: Insights */}
+              {activeTab === 'insights' && (
+                <InsightsView
+                  onOpenTransactionsWithFilter={(filter) => {
+                    openInLedger(filter);
+                    setActiveTab('transactions');
+                  }}
+                />
+              )}
 
-          {/* Page 08: Financial Calendar */}
-          {activeTab === 'calendar' && (
-            <FinancialCalendarView />
-          )}
+              {/* Page 08: Financial Calendar */}
+              {activeTab === 'calendar' && (
+                <FinancialCalendarView />
+              )}
 
-          {/* Page 09: Financial Copilot */}
-          {(activeTab === 'copilot' || activeTab === 'ai-assistant') && (
-            <AiAssistantView />
-          )}
+              {/* Page 09: Financial Copilot */}
+              {(activeTab === 'copilot' || activeTab === 'ai-assistant') && (
+                <AiAssistantView />
+              )}
 
-          {/* Page 10: Documents */}
-          {activeTab === 'documents' && (
-            <DocumentsView
-              onOpenUploadModal={() => setShowUploadModal(true)}
-              onNavigateLedger={() => setActiveTab('transactions')}
-            />
-          )}
+              {/* Page 10: Documents */}
+              {activeTab === 'documents' && (
+                <DocumentsView
+                  onOpenUploadModal={() => setShowUploadModal(true)}
+                  onNavigateLedger={() => setActiveTab('transactions')}
+                />
+              )}
 
-          {/* Page 11: Needs Review */}
-          {activeTab === 'review' && (
-            <ReviewCenterView />
-          )}
+              {/* Page 11: Needs Review */}
+              {activeTab === 'review' && (
+                <ReviewCenterView />
+              )}
 
-          {/* Page 12: Reports */}
-          {(activeTab === 'reports' || activeTab === 'analytics') && (
-            <ReportsView />
-          )}
+              {/* Page 12: Reports */}
+              {(activeTab === 'reports' || activeTab === 'analytics') && (
+                <ReportsView />
+              )}
 
-          {/* Payslips & Salary Analysis */}
-          {activeTab === 'payslips' && (
-            <PayslipsView />
-          )}
+              {/* Payslips & Salary Analysis */}
+              {activeTab === 'payslips' && (
+                <PayslipsView />
+              )}
 
-          {/* Household OS (Family, Loans, Goals, Splits, Vehicles, Trips) */}
-          {activeTab === 'household' && (
-            <HouseholdOSView />
-          )}
+              {/* Household OS (Family, Loans, Goals, Splits, Vehicles, Trips) */}
+              {activeTab === 'household' && (
+                <HouseholdOSView />
+              )}
 
-          {/* Page 13: Settings */}
-          {activeTab === 'settings' && (
-            <SettingsView />
-          )}
+              {/* Page 13: Settings */}
+              {activeTab === 'settings' && (
+                <SettingsView />
+              )}
 
-          {/* Page 14: Backup & Recovery */}
-          {activeTab === 'backup' && (
-            <BackupRecoveryView />
-          )}
+              {/* Page 14: Backup & Recovery */}
+              {activeTab === 'backup' && (
+                <BackupRecoveryView />
+              )}
 
-          {/* Page 15: Financial Truth Inspector */}
-          {(activeTab === 'truth-inspector' || activeTab === 'dev-tools') && (
-            <TruthInspectorView />
-          )}
-        </main>
+              {/* Page 15: Financial Truth Inspector */}
+              {(activeTab === 'truth-inspector' || activeTab === 'dev-tools') && (
+                <TruthInspectorView />
+              )}
+            </Suspense>
+          </main>
         </div>
       </div>
 
